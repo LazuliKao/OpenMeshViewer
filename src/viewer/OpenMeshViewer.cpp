@@ -1,6 +1,4 @@
-﻿// OpenMeshViewer.cpp : Defines the entry point for the application.
-
-#include "OpenMeshViewer.h"
+﻿#include "OpenMeshViewer.h"
 #include <QApplication>
 #include <QMainWindow>
 #include <QMenuBar>
@@ -9,13 +7,13 @@
 #include <QMatrix4x4>
 #include <QFile>
 #include <QTextStream>
+#include <QStandardPaths>
 #include <cmath>
 
-// MeshViewerWidget implementation
 MeshViewerWidget::MeshViewerWidget(QWidget *parent)
     : QOpenGLWidget(parent),
       meshLoaded(false),
-      program(nullptr),
+      //program(nullptr),
       vertexBuffer(QOpenGLBuffer::VertexBuffer),
       indexBuffer(QOpenGLBuffer::IndexBuffer),
       rotationX(0.0f),
@@ -30,11 +28,17 @@ MeshViewerWidget::~MeshViewerWidget()
 {
     makeCurrent();
 
-    if (program)
+    if (solidProgram)
     {
-        delete program;
-        program = nullptr;
+        delete solidProgram;
+        solidProgram = nullptr;
     }
+    if (wireframeProgram)
+    {
+        delete wireframeProgram;
+        wireframeProgram = nullptr;
+    }
+
     vao.destroy();
     vertexBuffer.destroy();
     indexBuffer.destroy();
@@ -90,10 +94,21 @@ void MeshViewerWidget::initializeGL()
     glEnable(GL_DEPTH_TEST);
 
     // Create shader program
-    program = new QOpenGLShaderProgram();
+    //program = new QOpenGLShaderProgram();
+     /*
     program->addShaderFromSourceFile(QOpenGLShader::Vertex, ":/shaders/Shaders/basic.vert.glsl");
     program->addShaderFromSourceFile(QOpenGLShader::Fragment, ":/shaders/Shaders/basic.frag.glsl");
-    program->link();
+    program->link();*/
+
+    solidProgram = new QOpenGLShaderProgram();
+    solidProgram->addShaderFromSourceFile(QOpenGLShader::Vertex, ":/shaders/Shaders/solid.vert.glsl");
+    solidProgram->addShaderFromSourceFile(QOpenGLShader::Fragment, ":/shaders/Shaders/solid.frag.glsl");
+    solidProgram->link();
+
+    wireframeProgram = new QOpenGLShaderProgram();
+    wireframeProgram->addShaderFromSourceFile(QOpenGLShader::Vertex, ":/shaders/Shaders/basic.vert.glsl");
+    wireframeProgram->addShaderFromSourceFile(QOpenGLShader::Fragment, ":/shaders/Shaders/basic.frag.glsl");
+    wireframeProgram->link();
 
     // Create VAO and buffers
     vao.create();
@@ -118,54 +133,74 @@ void MeshViewerWidget::updateMeshBuffers()
 
     vao.bind();
 
-    // Prepare vertex data (position and normal)
+    // 准备顶点数据（位置和法线）
     QVector<GLfloat> vertices;
     for (Mesh::VertexIter v_it = mesh.vertices_begin(); v_it != mesh.vertices_end(); ++v_it)
     {
         Mesh::Point p = mesh.point(*v_it);
         Mesh::Normal n = mesh.normal(*v_it);
 
-        // Position
+        // 顶点位置
         vertices << p[0] << p[1] << p[2];
-        // Normal
+        // 顶点法线（如果你有需要可以使用）
         vertices << n[0] << n[1] << n[2];
     }
 
-    // Prepare index data for triangular faces
+    // 准备索引数据，假设每个面是三角形
     QVector<GLuint> indices;
+    indices.clear();
     for (Mesh::FaceIter f_it = mesh.faces_begin(); f_it != mesh.faces_end(); ++f_it)
     {
+        QList<GLuint> faceIndices;
         for (Mesh::FaceVertexIter fv_it = mesh.fv_iter(*f_it); fv_it.is_valid(); ++fv_it)
         {
-            indices << fv_it->idx();
+            faceIndices.append(fv_it->idx());
+        }
+
+        if (faceIndices.size() == 3)
+        {
+            if (renderMode == Wireframe)
+            {
+                // 三条边作为线段
+                indices << faceIndices[0] << faceIndices[1];
+                indices << faceIndices[1] << faceIndices[2];
+                indices << faceIndices[2] << faceIndices[0];
+            }
+            else
+            {
+                // 三角面片
+                indices << faceIndices[0] << faceIndices[1] << faceIndices[2];
+            }
         }
     }
 
-    // Store number of indices for later use
+    // 存储索引数量
     indexCount = indices.size();
 
-    // Upload vertex data
+    // 上传顶点数据
     vertexBuffer.bind();
     vertexBuffer.allocate(vertices.constData(), vertices.size() * sizeof(GLfloat));
 
-    // Set vertex attribute pointers
-    program->bind();
+    // 设置顶点属性指针
+    /*program->bind();*/
+    QOpenGLShaderProgram* activeProgram = (renderMode == Solid) ? solidProgram : wireframeProgram;
+    activeProgram->bind();
 
-    // Position attribute
-    int posAttr = program->attributeLocation("position");
-    program->enableAttributeArray(posAttr);
-    program->setAttributeBuffer(posAttr, GL_FLOAT, 0, 3, 6 * sizeof(GLfloat));
+    // 位置属性
+    int posAttr = activeProgram->attributeLocation("position");
+    activeProgram->enableAttributeArray(posAttr);
+    activeProgram->setAttributeBuffer(posAttr, GL_FLOAT, 0, 3, 6 * sizeof(GLfloat));
 
-    // Normal attribute
-    int normalAttr = program->attributeLocation("normal");
-    program->enableAttributeArray(normalAttr);
-    program->setAttributeBuffer(normalAttr, GL_FLOAT, 3 * sizeof(GLfloat), 3, 6 * sizeof(GLfloat));
+    // 法线属性
+    int normalAttr = activeProgram->attributeLocation("normal");
+    activeProgram->enableAttributeArray(normalAttr);
+    activeProgram->setAttributeBuffer(normalAttr, GL_FLOAT, 3 * sizeof(GLfloat), 3, 6 * sizeof(GLfloat));
 
-    // Upload index data
+    // 上传索引数据
     indexBuffer.bind();
     indexBuffer.allocate(indices.constData(), indices.size() * sizeof(GLuint));
 
-    program->release();
+    activeProgram->release();
     vao.release();
 }
 
@@ -173,31 +208,39 @@ void MeshViewerWidget::paintGL()
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    if (!meshLoaded || !program)
+    if (!meshLoaded)
         return;
 
-    program->bind();
+    QOpenGLShaderProgram* activeProgram = (renderMode == Solid) ? solidProgram : wireframeProgram;
+    if (!activeProgram) return;
+
+    activeProgram->bind();
     vao.bind();
 
-    // Update model matrix with current rotation
     modelMatrix.setToIdentity();
     modelMatrix.rotate(rotationX, 1.0f, 0.0f, 0.0f);
     modelMatrix.rotate(rotationY, 0.0f, 1.0f, 0.0f);
 
-    // Update view matrix with current zoom
     viewMatrix.setToIdentity();
     viewMatrix.translate(0.0f, 0.0f, -zoom);
 
-    // Set uniforms
-    program->setUniformValue("model", modelMatrix);
-    program->setUniformValue("view", viewMatrix);
-    program->setUniformValue("projection", projectionMatrix);
+    activeProgram->setUniformValue("model", modelMatrix);
+    activeProgram->setUniformValue("view", viewMatrix);
+    activeProgram->setUniformValue("projection", projectionMatrix);
 
-    // Draw mesh
-    glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
+    if (renderMode == Solid)
+    {
+        glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
+    }
+    else if (renderMode == Wireframe)
+    {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glDrawElements(GL_LINES, indexCount, GL_UNSIGNED_INT, 0);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    }
 
     vao.release();
-    program->release();
+    activeProgram->release();
 }
 
 void MeshViewerWidget::resizeGL(int width, int height)
@@ -205,6 +248,24 @@ void MeshViewerWidget::resizeGL(int width, int height)
     // Update projection matrix
     projectionMatrix.setToIdentity();
     projectionMatrix.perspective(45.0f, width / float(height), 0.1f, 100.0f);
+}
+
+void MeshViewerWidget::toggleRenderMode()
+{
+    if (renderMode == Solid)
+    {
+        renderMode = Wireframe;
+    }
+    else
+    {
+        renderMode = Solid;
+    }
+
+    makeCurrent();       
+    updateMeshBuffers();  
+    doneCurrent();
+
+    update(); 
 }
 
 void MeshViewerWidget::mousePressEvent(QMouseEvent *event)
@@ -237,7 +298,6 @@ void MeshViewerWidget::wheelEvent(QWheelEvent *event)
     update();
 }
 
-// MainWindow implementation
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
@@ -278,11 +338,11 @@ void MainWindow::createActions()
     connect(exitAction, &QAction::triggered, this, &QWidget::close);
     fileMenu->addAction(exitAction);
 
-    QMenu *helpMenu = menuBar()->addMenu("&Help");
-
-    QAction *aboutAction = new QAction("&About", this);
-    connect(aboutAction, &QAction::triggered, this, &MainWindow::about);
-    helpMenu->addAction(aboutAction);
+    // Add the render mode toggle action
+    QMenu* ToggleMenu = menuBar()->addMenu("&Toggle");
+    QAction* toggleRenderModeAction = new QAction("Toggle Render Mode", this);
+    connect(toggleRenderModeAction, &QAction::triggered, this, &MainWindow::toggleRenderMode);
+    ToggleMenu->addAction(toggleRenderModeAction);
 }
 
 void MainWindow::createMenus()
@@ -311,12 +371,39 @@ void MainWindow::openFile()
     }
 }
 
-void MainWindow::about()
+void MainWindow::loadDefaultModel()
 {
-    QMessageBox::about(this, "About OpenMesh Viewer",
-                       "OpenMesh Viewer\n\n"
-                       "A simple 3D mesh viewer using Qt and OpenMesh\n"
-                       "© 2025");
+    QFile resourceFile(":/models/Models/Dino.ply");
+    if (resourceFile.open(QIODevice::ReadOnly))
+    {
+        QByteArray data = resourceFile.readAll();
+
+        QString tempFilePath = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/Dino_temp.ply";
+        QFile tempFile(tempFilePath);
+        if (tempFile.open(QIODevice::WriteOnly))
+        {
+            tempFile.write(data);
+            tempFile.close();
+            meshViewer->loadMesh(tempFilePath);
+			tempFile.remove();
+		}
+		else
+		{
+			QMessageBox::critical(this, "Error", "Failed to create temporary file");
+        }
+    }
+    
+}
+
+void MainWindow::toggleRenderMode()
+{
+    // Toggle the render mode between Solid and Wireframe
+    if (meshViewer)
+    {
+        meshViewer->toggleRenderMode();
+    }
+
+    statusBar()->showMessage("Render mode toggled", 2000);
 }
 
 int main(int argc, char *argv[])
@@ -325,6 +412,6 @@ int main(int argc, char *argv[])
 
     MainWindow mainWindow;
     mainWindow.show();
-
+	mainWindow.loadDefaultModel();
     return app.exec();
 }

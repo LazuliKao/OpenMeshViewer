@@ -1,7 +1,14 @@
 <!DOCTYPE RCC>
 <RCC>
-    <qresource prefix="/shaders">
-        <file>Shaders/basic.vert.glsl</file>
-        <file>Shaders/basic.frag.glsl</file>
-    </qresource>
+	<qresource prefix="/shaders">
+		<file>Shaders/basic.vert.glsl</file>
+		<file>Shaders/basic.frag.glsl</file>
+		<file>Shaders/solid.frag.glsl</file>
+		<file>Shaders/solid.vert.glsl</file>
+	</qresource>
+	<qresource prefix="/models">
+		<file>Models/Dino.ply</file>
+		<file>Models/Bunny.ply</file>
+		<file>Models/King.ply</file>
+	</qresource>
 </RCC>
