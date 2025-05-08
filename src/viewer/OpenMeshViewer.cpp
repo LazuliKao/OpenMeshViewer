@@ -19,6 +19,9 @@ MeshViewerWidget::MeshViewerWidget(QWidget *parent)
       rotationX(0.0f),
       rotationY(0.0f),
       zoom(5.0f),
+      translateX(0.0f),
+      translateY(0.0f),
+      translateZ(0.0f),
       indexCount(0)
 {
     setFocusPolicy(Qt::StrongFocus);
@@ -79,6 +82,9 @@ void MeshViewerWidget::resetView()
     rotationX = 0.0f;
     rotationY = 0.0f;
     zoom = 5.0f;
+    translateX = 0.0f;
+    translateY = 0.0f;
+    translateZ = 0.0f;
 
     modelMatrix.setToIdentity();
     viewMatrix.setToIdentity();
@@ -222,7 +228,7 @@ void MeshViewerWidget::paintGL()
     modelMatrix.rotate(rotationY, 0.0f, 1.0f, 0.0f);
 
     viewMatrix.setToIdentity();
-    viewMatrix.translate(0.0f, 0.0f, -zoom);
+    viewMatrix.translate(translateX, translateY, -zoom + translateZ);
 
     activeProgram->setUniformValue("model", modelMatrix);
     activeProgram->setUniformValue("view", viewMatrix);
@@ -275,12 +281,28 @@ void MeshViewerWidget::mousePressEvent(QMouseEvent *event)
 
 void MeshViewerWidget::mouseMoveEvent(QMouseEvent *event)
 {
+    QPoint delta = event->pos() - lastMousePosition;
+    
     if (event->buttons() & Qt::LeftButton)
     {
-        QPoint delta = event->pos() - lastMousePosition;
+        // 旋转
         rotationY += 0.5f * delta.x();
         rotationX += 0.5f * delta.y();
-
+        update();
+    }
+    else if (event->buttons() & Qt::RightButton)
+    {
+        // 平移
+        float sensitivity = 0.01f;
+        translateX += sensitivity * delta.x();
+        translateY -= sensitivity * delta.y(); // 注意Y轴方向与屏幕坐标系相反
+        update();
+    }
+    else if (event->buttons() & Qt::MiddleButton)
+    {
+        // Z轴平移
+        float sensitivity = 0.01f;
+        translateZ += sensitivity * delta.y();
         update();
     }
 

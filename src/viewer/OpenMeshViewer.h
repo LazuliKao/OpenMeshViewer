@@ -69,6 +69,7 @@ private:
    QPoint lastMousePosition;  
    float rotationX, rotationY;  
    float zoom;  
+   float translateX, translateY, translateZ;  // 添加平移变量
 };
 
 // MainWindow class - the application's main window
