@@ -36,5 +36,14 @@ find_package(OpenMesh REQUIRED)
 link_directories("${OPENMESH_DIR}/lib")  # 供导入库查找
 set(OPENMESH_BIN "${OPENMESH_DIR}")  # 添加 OpenMesh 二进制文件路径变量
 
+# Eigen (header-only library)
+include(FetchContent)
+FetchContent_Declare(
+  eigen
+  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+  GIT_TAG 3.4.0
+)
+FetchContent_MakeAvailable(eigen)
+
 # ─── 子工程 ──────────────────────────────────────────────────
 add_subdirectory(src)

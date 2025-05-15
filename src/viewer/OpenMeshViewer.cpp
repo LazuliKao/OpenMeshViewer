@@ -9,6 +9,26 @@
 #include <QTextStream>
 #include <QStandardPaths>
 #include <cmath>
+#include <unordered_map>
+#include <Eigen/Dense>
+#include <QDebug>
+#include <QInputDialog>
+#include <QDoubleValidator>
+#include <QLabel>
+#include <QLineEdit>
+#include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QDialog>
+
+// Hash function for OpenMesh::Vec3f to be used in unordered_map
+namespace std {
+    template<>
+    struct hash<OpenMesh::Vec3i> {
+        size_t operator()(const OpenMesh::Vec3i& key) const {
+            return hash<int>()(key[0]) ^ hash<int>()(key[1]) ^ hash<int>()(key[2]);
+        }
+    };
+}
 
 MeshViewerWidget::MeshViewerWidget(QWidget *parent)
     : QOpenGLWidget(parent),
@@ -444,14 +464,7 @@ void MeshViewerWidget::remesh()
 {
     if (!meshLoaded) return;
 
-    mesh.request_face_normals();
-    mesh.request_vertex_normals();
-
-    mesh.request_edge_status();
-    mesh.request_face_status();
-    mesh.request_vertex_status();
-
-    // 手动计算 bounding box 对角线长度（作为模型尺度参考）
+    // Calculate bounding box to determine model size
     OpenMesh::Vec3f bb_min(FLT_MAX, FLT_MAX, FLT_MAX);
     OpenMesh::Vec3f bb_max(-FLT_MAX, -FLT_MAX, -FLT_MAX);
     for (auto v_it = mesh.vertices_begin(); v_it != mesh.vertices_end(); ++v_it)
@@ -463,44 +476,218 @@ void MeshViewerWidget::remesh()
         }
     }
     float model_size = (bb_max - bb_min).norm();
-    float targetLength = 0.05f * model_size; // 目标边长 = 模型尺度的 5%
-
-    int tooLong = 0, tooShort = 0;
-    float totalLen = 0.0f;
-    int edgeCount = 0;
-
-    for (auto e_it = mesh.edges_begin(); e_it != mesh.edges_end(); ++e_it)
-    {
-        float len = mesh.calc_edge_length(*e_it);
-        totalLen += len;
-        ++edgeCount;
-
-        if (len > 4.0f / 3.0f * targetLength)
-            ++tooLong;
-        else if (len < 4.0f / 5.0f * targetLength)
-            ++tooShort;
+    
+    // Store original mesh statistics
+    int original_vertices = mesh.n_vertices();
+    int original_faces = mesh.n_faces();
+    
+    // Set epsilon value for vertex clustering (approximately 1% of model size)
+    float epsilon = 0.01f * model_size;
+    
+    // Execute vertex clustering algorithm
+    qDebug() << "[Remesh] Starting vertex clustering with epsilon =" << epsilon;
+    bool success = vertexClustering(epsilon);
+    
+    if (success) {
+        // Calculate reduction statistics
+        int new_vertices = mesh.n_vertices();
+        int new_faces = mesh.n_faces();
+        float vertex_reduction = 100.0f * (1.0f - static_cast<float>(new_vertices) / original_vertices);
+        float face_reduction = 100.0f * (1.0f - static_cast<float>(new_faces) / original_faces);
+        
+        qDebug() << "[Remesh] Vertex clustering completed:";
+        qDebug() << "  - Original: " << original_vertices << " vertices, " << original_faces << " faces";
+        qDebug() << "  - New:      " << new_vertices << " vertices, " << new_faces << " faces";
+        qDebug() << "  - Reduction: " << vertex_reduction << "% vertices, " << face_reduction << "% faces";
+        
+        // Update visualization
+        makeCurrent();
+        updateMeshBuffers();
+        doneCurrent();
+        update();
+    } else {
+        qDebug() << "[Remesh] Vertex clustering failed";
     }
-
-    float avgLen = totalLen / edgeCount;
-
-    qDebug() << "[Remesh Info] Edges:" << edgeCount
-        << " Avg Length:" << avgLen
-        << " Target:" << targetLength
-        << " Too Long:" << tooLong
-        << " Too Short:" << tooShort;
-
-    // 重计算法线（你可加 smoothing 后再重建法线）
-    mesh.update_normals();
-
-    // 清理状态位
-    mesh.release_edge_status();
-    mesh.release_face_status();
-    mesh.release_vertex_status();
-
-    updateMeshBuffers();  // 刷新OpenGL缓存
-    update();             // 重绘窗口
 }
 
+bool MeshViewerWidget::vertexClustering(float epsilon)
+{
+    if (!meshLoaded || epsilon <= 0.0f)
+        return false;
+
+    // Request necessary mesh properties
+    mesh.request_vertex_status();
+    mesh.request_edge_status();
+    mesh.request_face_status();
+
+    // Calculate bounding box
+    OpenMesh::Vec3f bb_min(FLT_MAX, FLT_MAX, FLT_MAX);
+    OpenMesh::Vec3f bb_max(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+    for (auto v_it = mesh.vertices_begin(); v_it != mesh.vertices_end(); ++v_it)
+    {
+        OpenMesh::Vec3f p = mesh.point(*v_it);
+        for (int i = 0; i < 3; ++i) {
+            bb_min[i] = std::min(bb_min[i], p[i]);
+            bb_max[i] = std::max(bb_max[i], p[i]);
+        }
+    }
+
+    // Calculate cell dimensions based on epsilon
+    OpenMesh::Vec3f cellSize(epsilon, epsilon, epsilon);
+    
+    // Map to store clusters: cell index -> quadric error metric (QEM) data
+    struct CellData {
+        Eigen::Matrix4f Q;           // Quadric error matrix
+        OpenMesh::Vec3f position;    // Representative position
+        std::vector<Mesh::VertexHandle> vertices; // Vertices in this cell
+    };
+    
+    std::unordered_map<OpenMesh::Vec3i, CellData> clusters;
+    
+    // Initialize the quadric error matrices (QEM) for each vertex
+    std::vector<Eigen::Matrix4f> vertex_quadrics(mesh.n_vertices());
+    
+    // Step 1: Compute quadric error matrices for each vertex based on its incident faces
+    for (auto f_it = mesh.faces_begin(); f_it != mesh.faces_end(); ++f_it) {
+        // Get face normal
+        OpenMesh::Vec3f normal = mesh.normal(*f_it);
+        float a = normal[0];
+        float b = normal[1];
+        float c = normal[2];
+        
+        // Get a point on the face to calculate d
+        OpenMesh::Vec3f point = mesh.point(*mesh.fv_iter(*f_it));
+        float d = -(a * point[0] + b * point[1] + c * point[2]);
+        
+        // Create plane equation parameters [a, b, c, d]
+        Eigen::Vector4f plane(a, b, c, d);
+        
+        // Create quadric error matrix Q = plane * plane^T
+        Eigen::Matrix4f Q = plane * plane.transpose();
+        
+        // Add this quadric to all vertices of this face
+        for (auto fv_it = mesh.fv_iter(*f_it); fv_it.is_valid(); ++fv_it) {
+            vertex_quadrics[fv_it->idx()] += Q;
+        }
+    }
+
+    // Step 2: Assign each vertex to a cluster
+    for (auto v_it = mesh.vertices_begin(); v_it != mesh.vertices_end(); ++v_it) {
+        OpenMesh::Vec3f p = mesh.point(*v_it);
+        
+        // Calculate cell indices
+        OpenMesh::Vec3i cellIdx;
+        for (int i = 0; i < 3; ++i) {
+            cellIdx[i] = static_cast<int>((p[i] - bb_min[i]) / cellSize[i]);
+        }
+        
+        // Add this vertex to its cell
+        clusters[cellIdx].vertices.push_back(*v_it);
+        
+        // Add this vertex's quadric to the cell
+        if (clusters[cellIdx].vertices.size() == 1) {
+            // First vertex in this cell
+            clusters[cellIdx].Q = vertex_quadrics[v_it->idx()];
+        } else {
+            // Additional vertex for this cell
+            clusters[cellIdx].Q += vertex_quadrics[v_it->idx()];
+        }
+    }
+    
+    // Step 3: Compute the optimal representative position for each cluster
+    for (auto& cluster_pair : clusters) {
+        CellData& cell = cluster_pair.second;
+        
+        // Extract the 3x3 submatrix A and 3x1 vector b from Q
+        Eigen::Matrix3f A;
+        Eigen::Vector3f b;
+        
+        for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j) {
+                A(i, j) = cell.Q(i, j);
+            }
+            b(i) = -cell.Q(i, 3);
+        }
+        
+        // Add small regularization to make A invertible
+        A += Eigen::Matrix3f::Identity() * 1e-6f;
+        
+        // Solve the linear system Ax = b to find the optimal position
+        Eigen::Vector3f optimal_pos;
+        
+        // Check if matrix is invertible
+        if (A.determinant() != 0) {
+            optimal_pos = A.ldlt().solve(b);
+        } else {
+            // If not invertible, use the centroid of vertices as fallback
+            optimal_pos = Eigen::Vector3f::Zero();
+            for (const auto& vh : cell.vertices) {
+                OpenMesh::Vec3f p = mesh.point(vh);
+                optimal_pos += Eigen::Vector3f(p[0], p[1], p[2]);
+            }
+            if (!cell.vertices.empty()) {
+                optimal_pos /= cell.vertices.size();
+            }
+        }
+        
+        // Store the optimal position
+        cell.position = OpenMesh::Vec3f(optimal_pos[0], optimal_pos[1], optimal_pos[2]);
+    }
+    
+    // Step 4: Create a new mesh
+    Mesh new_mesh;
+    
+    // Maps original vertex handles to new vertex handles
+    std::map<Mesh::VertexHandle, Mesh::VertexHandle> vertex_map;
+    
+    // Create a new vertex for each cluster
+    for (auto& cluster_pair : clusters) {
+        const auto& cell = cluster_pair.second;
+        
+        // Add the representative vertex to the new mesh
+        Mesh::VertexHandle new_vh = new_mesh.add_vertex(cell.position);
+        
+        // Map all original vertices to this new vertex
+        for (const auto& vh : cell.vertices) {
+            vertex_map[vh] = new_vh;
+        }
+    }
+    
+    // Add faces to the new mesh
+    for (auto f_it = mesh.faces_begin(); f_it != mesh.faces_end(); ++f_it) {
+        std::vector<Mesh::VertexHandle> face_vhs;
+        
+        // Collect the mapped vertices for this face
+        for (auto fv_it = mesh.fv_iter(*f_it); fv_it.is_valid(); ++fv_it) {
+            face_vhs.push_back(vertex_map[*fv_it]);
+        }
+        
+        // Check if the face is degenerate (vertices mapped to the same position)
+        if (face_vhs[0] != face_vhs[1] && face_vhs[1] != face_vhs[2] && face_vhs[2] != face_vhs[0]) {
+            new_mesh.add_face(face_vhs);
+        }
+    }
+    
+    // Step 5: Replace the original mesh with the new one
+    mesh = new_mesh;
+    
+    // Compute normals for the new mesh
+    mesh.request_face_normals();
+    mesh.request_vertex_normals();
+    mesh.update_normals();
+    
+    // Clean up
+    mesh.release_vertex_status();
+    mesh.release_edge_status();
+    mesh.release_face_status();
+    
+    // Calculate some statistics
+    qDebug() << "[Vertex Clustering] Original vertices:" << vertex_map.size() 
+             << " Clusters:" << clusters.size()
+             << " New faces:" << mesh.n_faces();
+    
+    return true;
+}
 
 int main(int argc, char *argv[])
 {

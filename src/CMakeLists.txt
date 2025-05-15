@@ -16,6 +16,7 @@ target_link_libraries(OpenMeshViewer
         Qt6::OpenGL
         Qt6::OpenGLWidgets
         opengl32
+        Eigen3::Eigen
     debug
         OpenMeshCored           OpenMeshToolsd
     optimized

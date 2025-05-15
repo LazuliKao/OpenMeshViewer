@@ -35,7 +35,8 @@ public:
     bool loadMesh(const QString& filename);
     void resetView();
     void toggleRenderMode();
-    void remesh();  // ✅ ← 添加这个函数
+    void remesh();  // Remeshing function
+    bool vertexClustering(float epsilon);  // Add vertex clustering method
 
     RenderMode renderMode = Solid;
 
