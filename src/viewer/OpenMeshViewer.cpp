@@ -464,95 +464,50 @@ void MeshViewerWidget::remesh()
 {
     if (!meshLoaded) return;
 
-    mesh.request_face_normals();
-    mesh.request_vertex_normals();
-
-    mesh.request_edge_status();
-    mesh.request_face_status();
-    mesh.request_vertex_status();
-
-    float collapseThreshold = 0.0f;
-    float splitThreshold = 0.0f;
-
-    // ===== 计算模型对角线长度，用于设置目标边长 =====
+    // Calculate bounding box to determine model size
     OpenMesh::Vec3f bb_min(FLT_MAX, FLT_MAX, FLT_MAX);
     OpenMesh::Vec3f bb_max(-FLT_MAX, -FLT_MAX, -FLT_MAX);
     for (auto v_it = mesh.vertices_begin(); v_it != mesh.vertices_end(); ++v_it)
     {
         auto p = mesh.point(*v_it);
-        for (int i = 0; i < 3; ++i)
-        {
+        for (int i = 0; i < 3; ++i) {
             bb_min[i] = std::min(bb_min[i], p[i]);
             bb_max[i] = std::max(bb_max[i], p[i]);
         }
     }
     float model_size = (bb_max - bb_min).norm();
-    float targetLength = 0.05f * model_size;
-
-    collapseThreshold = 0.8f * targetLength;
-    splitThreshold = 1.333f * targetLength;
-
-    qDebug() << "[Remesh] Target edge length:" << targetLength;
-    qDebug() << "[Remesh] Collapse <" << collapseThreshold << ", Split >" << splitThreshold;
-
-    int totalCollapsed = 0;
-    int totalSplit = 0;
-
-    // ===== 迭代 Remeshing 若干轮 =====
-    const int iterations = 3;
-    for (int iter = 0; iter < iterations; ++iter)
-    {
-        int collapsed = 0;
-        int split = 0;
-
-        for (auto e_it = mesh.edges_begin(); e_it != mesh.edges_end(); ++e_it)
-        {
-            if (mesh.status(*e_it).deleted()) continue;
-
-            float len = mesh.calc_edge_length(*e_it);
-
-            // ==== split 操作 ====
-            if (len > splitThreshold)
-            {
-                OpenMesh::HalfedgeHandle heh = mesh.halfedge_handle(*e_it, 0);
-                if (mesh.is_valid(heh))
-                {
-                    mesh.split(heh, mesh.calc_edge_midpoint(*e_it));
-                    ++split;
-                }
-            }
-
-            // ==== collapse 操作 ====
-            else if (len < collapseThreshold && mesh.is_collapse_ok(*e_it))
-            {
-                mesh.collapse(*e_it);
-                ++collapsed;
-            }
-        }
-
-        mesh.garbage_collection();
-
-        totalCollapsed += collapsed;
-        totalSplit += split;
-
-        qDebug() << "[Remesh] Iteration" << iter + 1
-            << ": collapsed =" << collapsed
-            << ", split =" << split;
+    
+    // Store original mesh statistics
+    int original_vertices = mesh.n_vertices();
+    int original_faces = mesh.n_faces();
+    
+    // Set epsilon value for vertex clustering (approximately 1% of model size)
+    float epsilon = 0.01f * model_size;
+    
+    // Execute vertex clustering algorithm
+    qDebug() << "[Remesh] Starting vertex clustering with epsilon =" << epsilon;
+    bool success = vertexClustering(epsilon);
+    
+    if (success) {
+        // Calculate reduction statistics
+        int new_vertices = mesh.n_vertices();
+        int new_faces = mesh.n_faces();
+        float vertex_reduction = 100.0f * (1.0f - static_cast<float>(new_vertices) / original_vertices);
+        float face_reduction = 100.0f * (1.0f - static_cast<float>(new_faces) / original_faces);
+        
+        qDebug() << "[Remesh] Vertex clustering completed:";
+        qDebug() << "  - Original: " << original_vertices << " vertices, " << original_faces << " faces";
+        qDebug() << "  - New:      " << new_vertices << " vertices, " << new_faces << " faces";
+        qDebug() << "  - Reduction: " << vertex_reduction << "% vertices, " << face_reduction << "% faces";
+        
+        // Update visualization
+        makeCurrent();
+        updateMeshBuffers();
+        doneCurrent();
+        update();
+    } else {
+        qDebug() << "[Remesh] Vertex clustering failed";
     }
-
-    // ===== 最后清理和更新 =====
-    mesh.update_normals();
-
-    mesh.release_edge_status();
-    mesh.release_face_status();
-    mesh.release_vertex_status();
-
-    qDebug() << "[Remesh] Done. Total collapsed:" << totalCollapsed
-        << ", Total split:" << totalSplit;
-    qDebug() << "[Remesh] New edge count:" << mesh.n_edges();
-
-    updateMeshBuffers();
-    update();
 }
 
 bool MeshViewerWidget::vertexClustering(float epsilon)
