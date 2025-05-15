@@ -324,6 +324,12 @@ MainWindow::MainWindow(QWidget *parent)
 
 void MainWindow::createActions()
 {
+    QMenu* processMenu = menuBar()->addMenu("&Process");
+
+    QAction* remeshAction = new QAction("Remeshing", this);
+    connect(remeshAction, &QAction::triggered, this, &MainWindow::remeshMesh);
+    processMenu->addAction(remeshAction);
+
     QMenu *fileMenu = menuBar()->addMenu("&File");
 
     QAction *openAction = new QAction("&Open", this);
@@ -405,6 +411,14 @@ void MainWindow::toggleRenderMode()
 
     statusBar()->showMessage("Render mode toggled", 2000);
 }
+//void MainWindow::remeshMesh()
+//{
+//    if (meshViewer) {
+//        meshViewer->remesh();
+//        statusBar()->showMessage("Remeshing completed", 2000);
+//    }
+//}
+
 
 int main(int argc, char *argv[])
 {
