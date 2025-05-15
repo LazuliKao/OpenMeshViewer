@@ -532,6 +532,10 @@ bool MeshViewerWidget::vertexClustering(float epsilon)
         }
     }
 
+    // 计算边界盒对角线长度，并用于检查异常值
+    float diag_length = (bb_max - bb_min).norm();
+    float bound_check = diag_length * 0.5f; // 用于检测异常顶点的阈值
+    
     // Calculate cell dimensions based on epsilon
     OpenMesh::Vec3f cellSize(epsilon, epsilon, epsilon);
     
@@ -540,65 +544,74 @@ bool MeshViewerWidget::vertexClustering(float epsilon)
         Eigen::Matrix4f Q;           // Quadric error matrix
         OpenMesh::Vec3f position;    // Representative position
         std::vector<Mesh::VertexHandle> vertices; // Vertices in this cell
+        OpenMesh::Vec3f centroid;    // 计算质心作为备选位置
+        bool use_centroid;           // 是否使用质心代替QEM位置
     };
     
     std::unordered_map<OpenMesh::Vec3i, CellData> clusters;
     
     // Initialize the quadric error matrices (QEM) for each vertex
-    std::vector<Eigen::Matrix4f> vertex_quadrics(mesh.n_vertices());
+    std::vector<Eigen::Matrix4f> vertex_quadrics(mesh.n_vertices(), Eigen::Matrix4f::Zero());
     
-    // Step 1: Compute quadric error matrices for each vertex based on its incident faces
+    // Step 1: 计算每个顶点的二次误差矩阵
     for (auto f_it = mesh.faces_begin(); f_it != mesh.faces_end(); ++f_it) {
-        // Get face normal
+        // 获取面的法向量
         OpenMesh::Vec3f normal = mesh.normal(*f_it);
         float a = normal[0];
         float b = normal[1];
         float c = normal[2];
         
-        // Get a point on the face to calculate d
+        // 获取面上的一个点以计算d
         OpenMesh::Vec3f point = mesh.point(*mesh.fv_iter(*f_it));
         float d = -(a * point[0] + b * point[1] + c * point[2]);
         
-        // Create plane equation parameters [a, b, c, d]
+        // 创建平面方程参数 [a, b, c, d]
         Eigen::Vector4f plane(a, b, c, d);
         
-        // Create quadric error matrix Q = plane * plane^T
+        // 创建二次误差矩阵 Q = plane * plane^T
         Eigen::Matrix4f Q = plane * plane.transpose();
         
-        // Add this quadric to all vertices of this face
+        // 将此二次误差矩阵添加到此面的所有顶点
         for (auto fv_it = mesh.fv_iter(*f_it); fv_it.is_valid(); ++fv_it) {
             vertex_quadrics[fv_it->idx()] += Q;
         }
     }
 
-    // Step 2: Assign each vertex to a cluster
+    // Step 2: 将每个顶点分配到一个单元格
     for (auto v_it = mesh.vertices_begin(); v_it != mesh.vertices_end(); ++v_it) {
         OpenMesh::Vec3f p = mesh.point(*v_it);
         
-        // Calculate cell indices
+        // 计算单元格索引
         OpenMesh::Vec3i cellIdx;
         for (int i = 0; i < 3; ++i) {
             cellIdx[i] = static_cast<int>((p[i] - bb_min[i]) / cellSize[i]);
         }
         
-        // Add this vertex to its cell
+        // 将顶点添加到其单元格
         clusters[cellIdx].vertices.push_back(*v_it);
         
-        // Add this vertex's quadric to the cell
+        // 更新单元格的质心信息
         if (clusters[cellIdx].vertices.size() == 1) {
-            // First vertex in this cell
+            // 初始化质心为第一个顶点
+            clusters[cellIdx].centroid = p;
             clusters[cellIdx].Q = vertex_quadrics[v_it->idx()];
+            clusters[cellIdx].use_centroid = false;
         } else {
-            // Additional vertex for this cell
+            // 累积顶点位置以计算质心
+            const auto& oldCentroid = clusters[cellIdx].centroid;
+            const size_t n = clusters[cellIdx].vertices.size();
+            clusters[cellIdx].centroid = oldCentroid * ((n-1.0f)/n) + p * (1.0f/n);
+            
+            // 累积二次误差矩阵
             clusters[cellIdx].Q += vertex_quadrics[v_it->idx()];
         }
     }
     
-    // Step 3: Compute the optimal representative position for each cluster
+    // Step 3: 为每个单元格计算最优代表顶点位置
     for (auto& cluster_pair : clusters) {
         CellData& cell = cluster_pair.second;
         
-        // Extract the 3x3 submatrix A and 3x1 vector b from Q
+        // 提取子矩阵 A 和向量 b
         Eigen::Matrix3f A;
         Eigen::Vector3f b;
         
@@ -609,79 +622,128 @@ bool MeshViewerWidget::vertexClustering(float epsilon)
             b(i) = -cell.Q(i, 3);
         }
         
-        // Add small regularization to make A invertible
-        A += Eigen::Matrix3f::Identity() * 1e-6f;
+        // 添加正则化项以确保矩阵可逆
+        float reg_factor = 1e-6f * A.norm();
+        A += Eigen::Matrix3f::Identity() * reg_factor;
         
-        // Solve the linear system Ax = b to find the optimal position
+        // 求解线性系统 Ax = b 以找到最优位置
         Eigen::Vector3f optimal_pos;
         
-        // Check if matrix is invertible
+        // 检查矩阵是否可逆和条件数（数值稳定性）
+        bool matrix_ok = false;
         if (A.determinant() != 0) {
-            optimal_pos = A.ldlt().solve(b);
-        } else {
-            // If not invertible, use the centroid of vertices as fallback
-            optimal_pos = Eigen::Vector3f::Zero();
-            for (const auto& vh : cell.vertices) {
-                OpenMesh::Vec3f p = mesh.point(vh);
-                optimal_pos += Eigen::Vector3f(p[0], p[1], p[2]);
-            }
-            if (!cell.vertices.empty()) {
-                optimal_pos /= cell.vertices.size();
+            // 使用更稳定的分解方法
+            Eigen::LDLT<Eigen::Matrix3f> ldlt(A);
+            if (ldlt.isPositiveDefinite()) {
+                optimal_pos = ldlt.solve(b);
+                matrix_ok = ldlt.info() == Eigen::Success;
             }
         }
         
-        // Store the optimal position
-        cell.position = OpenMesh::Vec3f(optimal_pos[0], optimal_pos[1], optimal_pos[2]);
+        if (!matrix_ok) {
+            // 如果矩阵不可逆或不是正定的，使用最小二乘求解
+            Eigen::JacobiSVD<Eigen::Matrix3f> svd(A, Eigen::ComputeFullU | Eigen::ComputeFullV);
+            if (svd.rank() > 0) {
+                optimal_pos = svd.solve(b);
+                matrix_ok = true;
+            }
+        }
+        
+        // 如果矩阵求解成功，检查生成的位置是否合理（不超出模型边界太多）
+        if (matrix_ok) {
+            OpenMesh::Vec3f candidate(optimal_pos[0], optimal_pos[1], optimal_pos[2]);
+            
+            // 检查计算出的点是否偏离太远（异常值检测）
+            bool is_outlier = false;
+            
+            // 检查点是否偏离边界盒太远
+            for (int i = 0; i < 3; ++i) {
+                if (candidate[i] < bb_min[i] - bound_check || candidate[i] > bb_max[i] + bound_check) {
+                    is_outlier = true;
+                    break;
+                }
+            }
+            
+            // 检查点到单元格质心的距离是否过大
+            if (!is_outlier) {
+                float dist_to_centroid = (candidate - cell.centroid).norm();
+                if (dist_to_centroid > diag_length * 0.1f) {  // 如果距离质心太远
+                    is_outlier = true;
+                }
+            }
+            
+            if (!is_outlier) {
+                cell.position = candidate;
+                cell.use_centroid = false;
+            } else {
+                // 使用质心作为备选方案
+                cell.position = cell.centroid;
+                cell.use_centroid = true;
+            }
+        } else {
+            // 如果矩阵求解失败，使用质心
+            cell.position = cell.centroid;
+            cell.use_centroid = true;
+        }
     }
     
-    // Step 4: Create a new mesh
+    // 日志输出
+    int centroid_used = 0;
+    for (const auto& cluster_pair : clusters) {
+        if (cluster_pair.second.use_centroid) {
+            centroid_used++;
+        }
+    }
+    qDebug() << "[Vertex Clustering] Using centroid for" << centroid_used << "out of" << clusters.size() << "clusters";
+    
+    // Step 4: 创建新网格
     Mesh new_mesh;
     
-    // Maps original vertex handles to new vertex handles
+    // 映射：原始顶点句柄 -> 新顶点句柄
     std::map<Mesh::VertexHandle, Mesh::VertexHandle> vertex_map;
     
-    // Create a new vertex for each cluster
+    // 为每个单元格创建一个新顶点
     for (auto& cluster_pair : clusters) {
         const auto& cell = cluster_pair.second;
         
-        // Add the representative vertex to the new mesh
+        // 将代表顶点添加到新网格
         Mesh::VertexHandle new_vh = new_mesh.add_vertex(cell.position);
         
-        // Map all original vertices to this new vertex
+        // 将所有原始顶点映射到此新顶点
         for (const auto& vh : cell.vertices) {
             vertex_map[vh] = new_vh;
         }
     }
     
-    // Add faces to the new mesh
+    // 将面添加到新网格
     for (auto f_it = mesh.faces_begin(); f_it != mesh.faces_end(); ++f_it) {
         std::vector<Mesh::VertexHandle> face_vhs;
         
-        // Collect the mapped vertices for this face
+        // 收集此面映射后的顶点
         for (auto fv_it = mesh.fv_iter(*f_it); fv_it.is_valid(); ++fv_it) {
             face_vhs.push_back(vertex_map[*fv_it]);
         }
         
-        // Check if the face is degenerate (vertices mapped to the same position)
-        if (face_vhs[0] != face_vhs[1] && face_vhs[1] != face_vhs[2] && face_vhs[2] != face_vhs[0]) {
+        // 检查面是否退化（顶点映射到相同位置）
+        if (face_vhs.size() == 3 && face_vhs[0] != face_vhs[1] && face_vhs[1] != face_vhs[2] && face_vhs[2] != face_vhs[0]) {
             new_mesh.add_face(face_vhs);
         }
     }
     
-    // Step 5: Replace the original mesh with the new one
+    // Step 5: 替换原始网格为新网格
     mesh = new_mesh;
     
-    // Compute normals for the new mesh
+    // 为新网格计算法线
     mesh.request_face_normals();
     mesh.request_vertex_normals();
     mesh.update_normals();
     
-    // Clean up
+    // 清理
     mesh.release_vertex_status();
     mesh.release_edge_status();
     mesh.release_face_status();
     
-    // Calculate some statistics
+    // 计算一些统计数据
     qDebug() << "[Vertex Clustering] Original vertices:" << vertex_map.size() 
              << " Clusters:" << clusters.size()
              << " New faces:" << mesh.n_faces();
