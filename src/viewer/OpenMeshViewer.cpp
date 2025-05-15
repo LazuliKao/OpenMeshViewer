@@ -444,11 +444,14 @@ void MeshViewerWidget::remesh()
 {
     if (!meshLoaded) return;
 
+    mesh.request_face_normals();
+    mesh.request_vertex_normals();
+
     mesh.request_edge_status();
     mesh.request_face_status();
     mesh.request_vertex_status();
 
-    // 手动计算 bounding box 对角线长度
+    // 手动计算 bounding box 对角线长度（作为模型尺度参考）
     OpenMesh::Vec3f bb_min(FLT_MAX, FLT_MAX, FLT_MAX);
     OpenMesh::Vec3f bb_max(-FLT_MAX, -FLT_MAX, -FLT_MAX);
     for (auto v_it = mesh.vertices_begin(); v_it != mesh.vertices_end(); ++v_it)
@@ -459,26 +462,43 @@ void MeshViewerWidget::remesh()
             bb_max[i] = std::max(bb_max[i], p[i]);
         }
     }
-    float targetLength = 0.05f * (bb_max - bb_min).norm();
+    float model_size = (bb_max - bb_min).norm();
+    float targetLength = 0.05f * model_size; // 目标边长 = 模型尺度的 5%
 
-    int longEdges = 0, shortEdges = 0;
+    int tooLong = 0, tooShort = 0;
+    float totalLen = 0.0f;
+    int edgeCount = 0;
+
     for (auto e_it = mesh.edges_begin(); e_it != mesh.edges_end(); ++e_it)
     {
         float len = mesh.calc_edge_length(*e_it);
+        totalLen += len;
+        ++edgeCount;
+
         if (len > 4.0f / 3.0f * targetLength)
-            ++longEdges;
+            ++tooLong;
         else if (len < 4.0f / 5.0f * targetLength)
-            ++shortEdges;
+            ++tooShort;
     }
 
-    qDebug() << "Too long edges:" << longEdges << "Too short edges:" << shortEdges;
+    float avgLen = totalLen / edgeCount;
 
+    qDebug() << "[Remesh Info] Edges:" << edgeCount
+        << " Avg Length:" << avgLen
+        << " Target:" << targetLength
+        << " Too Long:" << tooLong
+        << " Too Short:" << tooShort;
+
+    // 重计算法线（你可加 smoothing 后再重建法线）
+    mesh.update_normals();
+
+    // 清理状态位
     mesh.release_edge_status();
     mesh.release_face_status();
     mesh.release_vertex_status();
 
-    updateMeshBuffers();
-    update();
+    updateMeshBuffers();  // 刷新OpenGL缓存
+    update();             // 重绘窗口
 }
 
 
