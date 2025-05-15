@@ -433,13 +433,53 @@ void MainWindow::toggleRenderMode()
 
     statusBar()->showMessage("Render mode toggled", 2000);
 }
-//void MainWindow::remeshMesh()
-//{
-//    if (meshViewer) {
-//        meshViewer->remesh();
-//        statusBar()->showMessage("Remeshing completed", 2000);
-//    }
-//}
+void MainWindow::remeshMesh()
+{
+    if (meshViewer) {
+        meshViewer->remesh();
+        statusBar()->showMessage("Remeshing completed", 2000);
+    }
+}
+void MeshViewerWidget::remesh()
+{
+    if (!meshLoaded) return;
+
+    mesh.request_edge_status();
+    mesh.request_face_status();
+    mesh.request_vertex_status();
+
+    // 手动计算 bounding box 对角线长度
+    OpenMesh::Vec3f bb_min(FLT_MAX, FLT_MAX, FLT_MAX);
+    OpenMesh::Vec3f bb_max(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+    for (auto v_it = mesh.vertices_begin(); v_it != mesh.vertices_end(); ++v_it)
+    {
+        auto p = mesh.point(*v_it);
+        for (int i = 0; i < 3; ++i) {
+            bb_min[i] = std::min(bb_min[i], p[i]);
+            bb_max[i] = std::max(bb_max[i], p[i]);
+        }
+    }
+    float targetLength = 0.05f * (bb_max - bb_min).norm();
+
+    int longEdges = 0, shortEdges = 0;
+    for (auto e_it = mesh.edges_begin(); e_it != mesh.edges_end(); ++e_it)
+    {
+        float len = mesh.calc_edge_length(*e_it);
+        if (len > 4.0f / 3.0f * targetLength)
+            ++longEdges;
+        else if (len < 4.0f / 5.0f * targetLength)
+            ++shortEdges;
+    }
+
+    qDebug() << "Too long edges:" << longEdges << "Too short edges:" << shortEdges;
+
+    mesh.release_edge_status();
+    mesh.release_face_status();
+    mesh.release_vertex_status();
+
+    updateMeshBuffers();
+    update();
+}
 
 
 int main(int argc, char *argv[])

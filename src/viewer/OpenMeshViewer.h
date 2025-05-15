@@ -24,55 +24,54 @@ enum RenderMode {
 };
 
 
-class MeshViewerWidget : public QOpenGLWidget, protected QOpenGLFunctions  
-{  
-   Q_OBJECT  
+class MeshViewerWidget : public QOpenGLWidget, protected QOpenGLFunctions
+{
+    Q_OBJECT
 
-public:  
-   MeshViewerWidget(QWidget* parent = nullptr);  
-   ~MeshViewerWidget();  
+public:
+    MeshViewerWidget(QWidget* parent = nullptr);
+    ~MeshViewerWidget();
 
-   bool loadMesh(const QString& filename);  
-   void resetView();  
-   void toggleRenderMode();  
+    bool loadMesh(const QString& filename);
+    void resetView();
+    void toggleRenderMode();
+    void remesh();  // ✅ ← 添加这个函数
 
-   RenderMode renderMode = Solid;
+    RenderMode renderMode = Solid;
 
-protected:  
-   void initializeGL() override;  
-   void paintGL() override;  
-   void resizeGL(int width, int height) override;  
+protected:
+    void initializeGL() override;
+    void paintGL() override;
+    void resizeGL(int width, int height) override;
 
-   void mousePressEvent(QMouseEvent* event) override;  
-   void mouseMoveEvent(QMouseEvent* event) override;  
-   void wheelEvent(QWheelEvent* event) override;  
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
 
-private:  
-   void updateMeshBuffers();  
+private:
+    void updateMeshBuffers();
 
-   Mesh mesh;  
-   bool meshLoaded;  
+    Mesh mesh;
+    bool meshLoaded;
 
-   //QOpenGLShaderProgram* program;  
-   QOpenGLShaderProgram* solidProgram = nullptr;
-   QOpenGLShaderProgram* wireframeProgram = nullptr;
+    QOpenGLShaderProgram* solidProgram = nullptr;
+    QOpenGLShaderProgram* wireframeProgram = nullptr;
 
-   QOpenGLVertexArrayObject vao;  
-   QOpenGLBuffer vertexBuffer;  
-   QOpenGLBuffer indexBuffer;  
-   int indexCount; 
+    QOpenGLVertexArrayObject vao;
+    QOpenGLBuffer vertexBuffer;
+    QOpenGLBuffer indexBuffer;
+    int indexCount;
 
-   QMatrix4x4 modelMatrix;  
-   QMatrix4x4 viewMatrix;  
-   QMatrix4x4 projectionMatrix;  
+    QMatrix4x4 modelMatrix;
+    QMatrix4x4 viewMatrix;
+    QMatrix4x4 projectionMatrix;
 
-   QPoint lastMousePosition;  
-   float rotationX, rotationY;  
-   float zoom;  
-   float translateX, translateY, translateZ;  // 添加平移变量
+    QPoint lastMousePosition;
+    float rotationX, rotationY;
+    float zoom;
+    float translateX, translateY, translateZ;  // 添加平移变量
 };
 
-// MainWindow class - the application's main window
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -83,9 +82,11 @@ public:
 private slots:
     void openFile();
     void toggleRenderMode();
+    void remeshMesh();  // ✅ ← 添加这个菜单响应槽函数
 
 public slots:
     void loadDefaultModel();
+   
 
 private:
     MeshViewerWidget* meshViewer;
