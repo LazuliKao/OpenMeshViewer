@@ -18,26 +18,24 @@
 // Define the mesh type
 typedef OpenMesh::TriMesh_ArrayKernelT<> Mesh;
 
-enum RenderMode {
-    Solid,  // Normal rendering
-    Wireframe  // Wireframe rendering
+enum RenderMode
+{
+    Solid,    // Normal rendering
+    Wireframe // Wireframe rendering
 };
-
 
 class MeshViewerWidget : public QOpenGLWidget, protected QOpenGLFunctions
 {
     Q_OBJECT
 
 public:
-    MeshViewerWidget(QWidget* parent = nullptr);
+    MeshViewerWidget(QWidget *parent = nullptr);
     ~MeshViewerWidget();
 
-    bool loadMesh(const QString& filename);
+    bool loadMesh(const QString &filename);
     void resetView();
     void toggleRenderMode();
-    void remesh();  // Remeshing function
-    bool vertexClustering(float epsilon);  // Add vertex clustering method
-
+    void meshDecimation();
     RenderMode renderMode = Solid;
 
 protected:
@@ -45,9 +43,9 @@ protected:
     void paintGL() override;
     void resizeGL(int width, int height) override;
 
-    void mousePressEvent(QMouseEvent* event) override;
-    void mouseMoveEvent(QMouseEvent* event) override;
-    void wheelEvent(QWheelEvent* event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void wheelEvent(QWheelEvent *event) override;
 
 private:
     void updateMeshBuffers();
@@ -55,8 +53,8 @@ private:
     Mesh mesh;
     bool meshLoaded;
 
-    QOpenGLShaderProgram* solidProgram = nullptr;
-    QOpenGLShaderProgram* wireframeProgram = nullptr;
+    QOpenGLShaderProgram *solidProgram = nullptr;
+    QOpenGLShaderProgram *wireframeProgram = nullptr;
 
     QOpenGLVertexArrayObject vao;
     QOpenGLBuffer vertexBuffer;
@@ -70,7 +68,7 @@ private:
     QPoint lastMousePosition;
     float rotationX, rotationY;
     float zoom;
-    float translateX, translateY, translateZ;  // 添加平移变量
+    float translateX, translateY, translateZ; // 添加平移变量
 };
 
 class MainWindow : public QMainWindow
@@ -78,19 +76,18 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    MainWindow(QWidget* parent = nullptr);
+    MainWindow(QWidget *parent = nullptr);
 
 private slots:
     void openFile();
+    void meshDecimation();
     void toggleRenderMode();
-    void remeshMesh();  // ✅ ← 添加这个菜单响应槽函数
 
 public slots:
     void loadDefaultModel();
-   
 
 private:
-    MeshViewerWidget* meshViewer;
+    MeshViewerWidget *meshViewer;
     void createActions();
     void createMenus();
 };
