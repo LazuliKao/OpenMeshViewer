@@ -232,27 +232,27 @@ Eigen::Vector3d MeshDecimation::computeOptimalPosition(const Eigen::Matrix4d &qu
                            std::numeric_limits<double>::quiet_NaN());
 }
 
-bool MeshDecimation::isValidCollapse(Mesh &mesh, Mesh::EdgeHandle edge)
+bool MeshDecimation::isValidCollapse(Mesh& mesh, Mesh::EdgeHandle edge)
 {
     auto heh = mesh.halfedge_handle(edge, 0);
     auto v1 = mesh.from_vertex_handle(heh);
     auto v2 = mesh.to_vertex_handle(heh);
 
-    // Check if vertices are boundary vertices
+    // 检查两个顶点是否是边界顶点
     bool v1_boundary = mesh.is_boundary(v1);
     bool v2_boundary = mesh.is_boundary(v2);
     bool edge_boundary = mesh.is_boundary(edge);
 
-    // Don't collapse if both vertices are boundary but edge is not
+    // 如果两个顶点都是边界顶点但边不是边界边，则不允许折叠
     if (v1_boundary && v2_boundary && !edge_boundary)
     {
         return false;
     }
 
-    // Check for face flip by examining normals
+    // 通过法线检查折叠是否会导致面翻转
     std::vector<Mesh::FaceHandle> faces_to_check;
 
-    // Collect faces around v1 that won't be deleted
+    // 收集不会被删除的 v1 周围的面，用于后续检查
     for (auto vf_it = mesh.vf_iter(v1); vf_it.is_valid(); ++vf_it)
     {
         bool will_be_deleted = false;
@@ -270,22 +270,22 @@ bool MeshDecimation::isValidCollapse(Mesh &mesh, Mesh::EdgeHandle edge)
         }
     }
 
-    // Additional topological checks could be added here
+    // 此处可添加更多拓扑合法性检查
     return true;
 }
 
-bool MeshDecimation::collapseEdge(Mesh &mesh, const EdgeCollapse &collapse)
+bool MeshDecimation::collapseEdge(Mesh& mesh, const EdgeCollapse& collapse)
 {
     auto heh = mesh.halfedge_handle(collapse.edge, 0);
     auto v1 = mesh.from_vertex_handle(heh);
     auto v2 = mesh.to_vertex_handle(heh);
 
-    // Set new position for v1 (the vertex that will remain)
+    // 设置新顶点位置（v1 是保留的顶点）
     mesh.set_point(v1, Mesh::Point(collapse.optimalPosition[0],
-                                   collapse.optimalPosition[1],
-                                   collapse.optimalPosition[2]));
+        collapse.optimalPosition[1],
+        collapse.optimalPosition[2]));
 
-    // Update quadric for remaining vertex
+    // 更新保留顶点的 Quadric 误差矩阵
     auto it1 = vertexQuadrics_.find(v1);
     auto it2 = vertexQuadrics_.find(v2);
 
@@ -295,7 +295,7 @@ bool MeshDecimation::collapseEdge(Mesh &mesh, const EdgeCollapse &collapse)
         vertexQuadrics_.erase(it2);
     }
 
-    // Collect neighboring vertices for cost updates
+    // 收集邻居顶点，以便后续更新代价
     std::set<Mesh::VertexHandle> neighbors;
     for (auto vv_it = mesh.vv_iter(v1); vv_it.is_valid(); ++vv_it)
     {
@@ -306,16 +306,16 @@ bool MeshDecimation::collapseEdge(Mesh &mesh, const EdgeCollapse &collapse)
         neighbors.insert(*vv_it);
     }
 
-    // Remove collapsed edge from valid edges
+    // 从合法边集合中移除当前折叠边
     validEdges_.erase(collapse.edge);
 
-    // Remove edges incident to v2 from valid edges
+    // 从合法边集合中移除与 v2 相邻的边
     for (auto ve_it = mesh.ve_iter(v2); ve_it.is_valid(); ++ve_it)
     {
         validEdges_.erase(*ve_it);
     }
 
-    // Perform the actual collapse
+    // 执行实际的边折叠操作
     if (!mesh.is_collapse_ok(heh))
     {
         return false;
@@ -323,15 +323,16 @@ bool MeshDecimation::collapseEdge(Mesh &mesh, const EdgeCollapse &collapse)
 
     mesh.collapse(heh);
 
-    // Update costs for neighboring edges
+    // 更新保留顶点周围边的折叠代价
     updateEdgeCosts(mesh, v1);
 
     return true;
 }
 
-void MeshDecimation::updateEdgeCosts(Mesh &mesh, Mesh::VertexHandle vertex)
+
+void MeshDecimation::updateEdgeCosts(Mesh& mesh, Mesh::VertexHandle vertex)
 {
-    // Update costs for all edges incident to the vertex
+    // 更新与该顶点相邻的所有边的折叠代价
     for (auto ve_it = mesh.ve_iter(vertex); ve_it.is_valid(); ++ve_it)
     {
         if (mesh.status(*ve_it).deleted())
@@ -340,6 +341,7 @@ void MeshDecimation::updateEdgeCosts(Mesh &mesh, Mesh::VertexHandle vertex)
         Eigen::Vector3d optimalPos;
         double cost = computeEdgeCost(mesh, *ve_it, optimalPos);
 
+        // 如果代价是有效值（非无穷），则加入队列
         if (cost < std::numeric_limits<double>::infinity())
         {
             EdgeCollapse collapse;
@@ -347,8 +349,8 @@ void MeshDecimation::updateEdgeCosts(Mesh &mesh, Mesh::VertexHandle vertex)
             collapse.cost = cost;
             collapse.optimalPosition = optimalPos;
 
-            edgeQueue_.push(collapse);
-            validEdges_.insert(*ve_it);
+            edgeQueue_.push(collapse);       // 推入优先队列
+            validEdges_.insert(*ve_it);      // 标记该边为合法边
         }
     }
 }
