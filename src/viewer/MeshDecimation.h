@@ -53,7 +53,10 @@ private:
     double maxError_;
 
     // QEM数据结构
+    // 顶点二次误差矩阵映射表，存储每个顶点的4x4二次误差矩阵用于计算边折叠代价
     std::map<Mesh::VertexHandle, Eigen::Matrix4d> vertexQuadrics_;
+    // 边折叠优先队列，按照折叠代价从小到大排序，确保每次选择代价最小的边进行折叠
     std::priority_queue<EdgeCollapse, std::vector<EdgeCollapse>, std::greater<EdgeCollapse>> edgeQueue_;
+    // 有效边集合，存储当前网格中可以进行折叠操作的边句柄
     std::set<Mesh::EdgeHandle> validEdges_;
 };

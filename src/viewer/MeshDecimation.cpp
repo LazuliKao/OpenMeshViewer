@@ -49,7 +49,8 @@ void MeshDecimation::performDecimation(Mesh &mesh)
     while (mesh.n_vertices() > targetVertexCount_ && !edgeQueue_.empty())
     {
         EdgeCollapse bestCollapse = edgeQueue_.top();
-        edgeQueue_.pop();        // 检查此边是否仍然有效
+        edgeQueue_.pop();
+        // 检查此边是否仍然有效
         if (!mesh.is_valid_handle(bestCollapse.edge) ||
             mesh.status(bestCollapse.edge).deleted() ||
             validEdges_.find(bestCollapse.edge) == validEdges_.end())
@@ -129,7 +130,7 @@ Eigen::Matrix4d MeshDecimation::computeFaceQuadric(Mesh &mesh, Mesh::FaceHandle 
     double a = normal[0];
     double b = normal[1];
     double c = normal[2];
-	//代入平面中的一个点来计算d
+    // 代入平面中的一个点来计算d
     double d = -(a * point[0] + b * point[1] + c * point[2]);
 
     // 创建二次误差矩阵
@@ -199,7 +200,7 @@ double MeshDecimation::computeEdgeCost(Mesh &mesh, Mesh::EdgeHandle edge, Eigen:
     optimalPos = computeOptimalPosition(combinedQuadric);
 
     // 如果最优位置计算失败，尝试使用中点
-    if (optimalPos.hasNaN())
+    if (optimalPos.hasNaN()) // 不满秩则使用中点
     {
         auto p1 = mesh.point(v1);
         auto p2 = mesh.point(v2);
@@ -222,7 +223,7 @@ Eigen::Vector3d MeshDecimation::computeOptimalPosition(const Eigen::Matrix4d &qu
 
     // 求解 Ax = b 得到最优位置
     Eigen::FullPivLU<Eigen::Matrix3d> lu(A);
-    if (lu.isInvertible())
+    if (lu.isInvertible()) // 检查矩阵分解是否可逆
     {
         return lu.solve(b);
     }
@@ -233,7 +234,7 @@ Eigen::Vector3d MeshDecimation::computeOptimalPosition(const Eigen::Matrix4d &qu
                            std::numeric_limits<double>::quiet_NaN());
 }
 
-bool MeshDecimation::isValidCollapse(Mesh& mesh, Mesh::EdgeHandle edge)
+bool MeshDecimation::isValidCollapse(Mesh &mesh, Mesh::EdgeHandle edge)
 {
     auto heh = mesh.halfedge_handle(edge, 0);
     auto v1 = mesh.from_vertex_handle(heh);
@@ -275,7 +276,7 @@ bool MeshDecimation::isValidCollapse(Mesh& mesh, Mesh::EdgeHandle edge)
     return true;
 }
 
-bool MeshDecimation::collapseEdge(Mesh& mesh, const EdgeCollapse& collapse)
+bool MeshDecimation::collapseEdge(Mesh &mesh, const EdgeCollapse &collapse)
 {
     auto heh = mesh.halfedge_handle(collapse.edge, 0);
     auto v1 = mesh.from_vertex_handle(heh);
@@ -283,8 +284,8 @@ bool MeshDecimation::collapseEdge(Mesh& mesh, const EdgeCollapse& collapse)
 
     // 设置新顶点位置（v1 是保留的顶点）
     mesh.set_point(v1, Mesh::Point(collapse.optimalPosition[0],
-        collapse.optimalPosition[1],
-        collapse.optimalPosition[2]));
+                                   collapse.optimalPosition[1],
+                                   collapse.optimalPosition[2]));
 
     // 更新保留顶点的 Quadric 误差矩阵
     auto it1 = vertexQuadrics_.find(v1);
@@ -322,6 +323,10 @@ bool MeshDecimation::collapseEdge(Mesh& mesh, const EdgeCollapse& collapse)
         return false;
     }
 
+    // OpenMesh 的 collapse() 函数会自动：
+    // 将所有指向 v2 的边重新连接到 v1(新的)
+    // 删除不再需要的边和面
+    // 维护网格的拓扑一致性
     mesh.collapse(heh);
 
     // 更新保留顶点周围边的折叠代价
@@ -330,12 +335,11 @@ bool MeshDecimation::collapseEdge(Mesh& mesh, const EdgeCollapse& collapse)
     return true;
 }
 
-
-void MeshDecimation::updateEdgeCosts(Mesh& mesh, Mesh::VertexHandle vertex)
+void MeshDecimation::updateEdgeCosts(Mesh &mesh, Mesh::VertexHandle vertex)
 {
     // 更新与该顶点相邻的所有边的折叠代价
     for (auto ve_it = mesh.ve_iter(vertex); ve_it.is_valid(); ++ve_it)
-    {
+    { // 遍历新顶点的条边
         if (mesh.status(*ve_it).deleted())
             continue;
 
@@ -350,8 +354,8 @@ void MeshDecimation::updateEdgeCosts(Mesh& mesh, Mesh::VertexHandle vertex)
             collapse.cost = cost;
             collapse.optimalPosition = optimalPos;
 
-            edgeQueue_.push(collapse);       // 推入优先队列
-            validEdges_.insert(*ve_it);      // 标记该边为合法边
+            edgeQueue_.push(collapse);  // 推入优先队列
+            validEdges_.insert(*ve_it); // 标记该边为合法边
         }
     }
 }

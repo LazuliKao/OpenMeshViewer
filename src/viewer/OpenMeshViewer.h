@@ -36,7 +36,10 @@ public:
     void resetView();
     void toggleRenderMode();
     void meshDecimation();
-    RenderMode renderMode = Solid;    // 网格简化的公共访问接口
+    void autoFitView(); // 添加自动缩放相关函数
+    void computeBoundingBox(Mesh::Point &minPoint, Mesh::Point &maxPoint);
+
+    RenderMode renderMode = Solid; // 网格简化的公共访问接口
     Mesh mesh;
     bool meshLoaded;
     MeshDecimation meshDecimator;
@@ -82,6 +85,7 @@ private slots:
     void openFile();
     void meshDecimation();
     void toggleRenderMode();
+    void autoFitView();
 
 public slots:
     void loadDefaultModel();

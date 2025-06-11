@@ -96,6 +96,7 @@ bool MeshViewerWidget::loadMesh(const QString &filename)
     }
 
     resetView();
+    autoFitView(); // 自动调整视图以适应模型大小
     update();
 
     return true;
@@ -113,6 +114,65 @@ void MeshViewerWidget::resetView()
     modelMatrix.setToIdentity();
     viewMatrix.setToIdentity();
     viewMatrix.translate(0.0f, 0.0f, -zoom);
+
+    update();
+}
+
+void MeshViewerWidget::computeBoundingBox(Mesh::Point &minPoint, Mesh::Point &maxPoint)
+{
+    if (!meshLoaded || mesh.n_vertices() == 0)
+        return;
+
+    // 初始化边界框
+    auto v_it = mesh.vertices_begin();
+    minPoint = maxPoint = mesh.point(*v_it);
+    ++v_it;
+
+    // 遍历所有顶点计算边界框
+    for (; v_it != mesh.vertices_end(); ++v_it)
+    {
+        Mesh::Point p = mesh.point(*v_it);
+
+        for (int i = 0; i < 3; ++i)
+        {
+            if (p[i] < minPoint[i])
+                minPoint[i] = p[i];
+            if (p[i] > maxPoint[i])
+                maxPoint[i] = p[i];
+        }
+    }
+}
+
+void MeshViewerWidget::autoFitView()
+{
+    if (!meshLoaded)
+        return;
+
+    Mesh::Point minPoint, maxPoint;
+    computeBoundingBox(minPoint, maxPoint);
+
+    // 计算模型的尺寸
+    Mesh::Point size = maxPoint - minPoint;
+    float maxSize = std::max({size[0], size[1], size[2]});
+
+    // 如果模型太小或太大，自动调整zoom值
+    if (maxSize > 0.0f)
+    {
+        // 根据模型大小计算合适的zoom值
+        // 通常我们希望模型占据视口的合适比例
+        float targetSize = 2.0f;            // 目标显示大小
+        zoom = maxSize / targetSize * 3.0f; // 调整系数
+
+        // 限制zoom的范围
+        zoom = qMax(1.0f, qMin(zoom, 50.0f));
+    }
+
+    // 计算模型中心点，用于平移调整
+    Mesh::Point center = (minPoint + maxPoint) * 0.5f;
+
+    // 重新设置视图矩阵
+    viewMatrix.setToIdentity();
+    viewMatrix.translate(-center[0], -center[1], -zoom);
 
     update();
 }
@@ -247,16 +307,17 @@ void MeshViewerWidget::paintGL()
 
     activeProgram->bind();
     vao.bind();
-
     modelMatrix.setToIdentity();
     modelMatrix.rotate(rotationX, 1.0f, 0.0f, 0.0f);
     modelMatrix.rotate(rotationY, 0.0f, 1.0f, 0.0f);
 
-    viewMatrix.setToIdentity();
-    viewMatrix.translate(translateX, translateY, -zoom + translateZ);
-
+    // 更新视图矩阵，考虑模型中心和缩放
+    QMatrix4x4 tempViewMatrix;
+    tempViewMatrix.setToIdentity();
+    tempViewMatrix.translate(translateX, translateY, translateZ);
+    tempViewMatrix = tempViewMatrix * viewMatrix;
     activeProgram->setUniformValue("model", modelMatrix);
-    activeProgram->setUniformValue("view", viewMatrix);
+    activeProgram->setUniformValue("view", tempViewMatrix);
     activeProgram->setUniformValue("projection", projectionMatrix);
 
     if (renderMode == Solid)
@@ -336,11 +397,20 @@ void MeshViewerWidget::mouseMoveEvent(QMouseEvent *event)
 
 void MeshViewerWidget::wheelEvent(QWheelEvent *event)
 {
-    zoom -= event->angleDelta().y() / 120.0f;
-    zoom = qMax(1.0f, qMin(zoom, 15.0f));
+    float zoomFactor = 1.0f + event->angleDelta().y() / 1200.0f;
+    zoom *= zoomFactor;
+    zoom = qMax(0.1f, qMin(zoom, 100.0f));
+
+    // 更新视图矩阵的Z分量
+    QMatrix4x4 currentTranslation;
+    currentTranslation.setToIdentity();
+
+    // 提取当前的X,Y平移
+    float currentX = viewMatrix(0, 3);
+    float currentY = viewMatrix(1, 3);
 
     viewMatrix.setToIdentity();
-    viewMatrix.translate(0.0f, 0.0f, -zoom);
+    viewMatrix.translate(currentX, currentY, -zoom);
 
     update();
 }
@@ -396,6 +466,10 @@ void MainWindow::createActions()
     QAction *toggleRenderModeAction = new QAction("Toggle Render Mode", this);
     connect(toggleRenderModeAction, &QAction::triggered, this, &MainWindow::toggleRenderMode);
     ToggleMenu->addAction(toggleRenderModeAction);
+
+    QAction *autoFitAction = new QAction("Auto Fit View", this);
+    connect(autoFitAction, &QAction::triggered, this, &MainWindow::autoFitView);
+    ToggleMenu->addAction(autoFitAction);
 }
 
 void MainWindow::createMenus()
@@ -426,12 +500,12 @@ void MainWindow::openFile()
 
 void MainWindow::loadDefaultModel()
 {
-    QFile resourceFile(":/models/Models/Horse.ply");
+    QFile resourceFile(":/models/Models/Dino.ply");
     if (resourceFile.open(QIODevice::ReadOnly))
     {
         QByteArray data = resourceFile.readAll();
 
-        QString tempFilePath = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/Horse_temp.ply";
+        QString tempFilePath = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/Dino_temp.ply";
         QFile tempFile(tempFilePath);
         if (tempFile.open(QIODevice::WriteOnly))
         {
@@ -456,6 +530,19 @@ void MainWindow::toggleRenderMode()
     }
 
     statusBar()->showMessage("Render mode toggled", 2000);
+}
+
+void MainWindow::autoFitView()
+{
+    if (meshViewer && meshViewer->meshLoaded)
+    {
+        meshViewer->autoFitView();
+        statusBar()->showMessage("View auto-fitted to model", 2000);
+    }
+    else
+    {
+        QMessageBox::information(this, "Info", "Please load a mesh first!");
+    }
 }
 void MainWindow::meshDecimation()
 {
