@@ -7,6 +7,8 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 add_executable(OpenMeshViewer
     viewer/OpenMeshViewer.cpp
     viewer/OpenMeshViewer.h
+    viewer/MeshDecimation.cpp
+    viewer/MeshDecimation.h
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
 

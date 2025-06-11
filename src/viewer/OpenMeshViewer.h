@@ -14,6 +14,7 @@
 
 #include <OpenMesh/Core/IO/MeshIO.hh>
 #include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
+#include "MeshDecimation.h"
 
 // Define the mesh type
 typedef OpenMesh::TriMesh_ArrayKernelT<> Mesh;
@@ -49,9 +50,9 @@ protected:
 
 private:
     void updateMeshBuffers();
-
     Mesh mesh;
     bool meshLoaded;
+    MeshDecimation meshDecimator;
 
     QOpenGLShaderProgram *solidProgram = nullptr;
     QOpenGLShaderProgram *wireframeProgram = nullptr;

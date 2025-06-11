@@ -1,4 +1,5 @@
 ﻿#include "OpenMeshViewer.h"
+#include "MeshDecimation.h"
 #include <QApplication>
 #include <QMainWindow>
 #include <QMenuBar>
@@ -469,11 +470,8 @@ void MeshViewerWidget::meshDecimation()
     if (!meshLoaded)
         return;
 
-    // TODO: Implement mesh decimation logic here
-    // For now, this is just a placeholder
-
-    // Example: You might want to add decimation parameters
-    // and use OpenMesh's decimation tools
+    // Use the MeshDecimation class to perform decimation
+    meshDecimator.performDecimation(mesh);
 
     // After decimation, update the mesh buffers
     makeCurrent();
