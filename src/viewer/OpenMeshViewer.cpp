@@ -397,7 +397,7 @@ void MeshViewerWidget::mouseMoveEvent(QMouseEvent *event)
 
 void MeshViewerWidget::wheelEvent(QWheelEvent *event)
 {
-    float zoomFactor = 1.0f + event->angleDelta().y() / 1200.0f;
+    float zoomFactor = 1.0f - event->angleDelta().y() / 1200.0f;
     zoom *= zoomFactor;
     zoom = qMax(0.1f, qMin(zoom, 100.0f));
 
@@ -500,12 +500,12 @@ void MainWindow::openFile()
 
 void MainWindow::loadDefaultModel()
 {
-    QFile resourceFile(":/models/Models/Dino.ply");
+    QFile resourceFile(":/models/Models/Hemapig.ply");
     if (resourceFile.open(QIODevice::ReadOnly))
     {
         QByteArray data = resourceFile.readAll();
 
-        QString tempFilePath = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/Dino_temp.ply";
+        QString tempFilePath = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/Hemapig_temp.ply";
         QFile tempFile(tempFilePath);
         if (tempFile.open(QIODevice::WriteOnly))
         {
@@ -613,7 +613,7 @@ void MainWindow::meshDecimation()
         int finalVertexCount = meshViewer->mesh.n_vertices();
         int finalFaceCount = meshViewer->mesh.n_faces();
 
-        QString resultMessage = QString("简化完成！\n原始：%1 顶点，%2 面片\n简化后：%3 顶点，%4 面片\n简化率：%.1f%%")
+        QString resultMessage = QString("简化完成！\n原始：%1 顶点，%2 面片\n简化后：%3 顶点，%4 面片\n简化率：%5 %")
                                     .arg(currentVertexCount)
                                     .arg(currentFaceCount)
                                     .arg(finalVertexCount)
