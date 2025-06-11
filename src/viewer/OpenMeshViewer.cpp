@@ -368,7 +368,7 @@ void MainWindow::createActions()
 {
     QMenu* processMenu = menuBar()->addMenu("&Process");
 
-    QAction* remeshAction = new QAction("Remeshing", this);
+    QAction* remeshAction = new QAction("MeshDecimation", this);
     connect(remeshAction, &QAction::triggered, this, &MainWindow::remeshMesh);
     processMenu->addAction(remeshAction);
 
