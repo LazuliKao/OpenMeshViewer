@@ -464,6 +464,7 @@ void MeshViewerWidget::remesh()
 {
     if (!meshLoaded) return;
 
+    // Calculate bounding box to determine model size
     OpenMesh::Vec3f bb_min(FLT_MAX, FLT_MAX, FLT_MAX);
     OpenMesh::Vec3f bb_max(-FLT_MAX, -FLT_MAX, -FLT_MAX);
     for (auto v_it = mesh.vertices_begin(); v_it != mesh.vertices_end(); ++v_it)
@@ -475,70 +476,39 @@ void MeshViewerWidget::remesh()
         }
     }
     float model_size = (bb_max - bb_min).norm();
-
+    
+    // Store original mesh statistics
     int original_vertices = mesh.n_vertices();
-    int target_min_vertices = static_cast<int>(original_vertices * 0.9);  // 至少保留 90%点
-
+    int original_faces = mesh.n_faces();
+    
+    // Set epsilon value for vertex clustering (approximately 1% of model size)
     float epsilon = 0.01f * model_size;
-    float max_epsilon = 0.1f * model_size; // 防止无限放大
-    float step = 0.005f * model_size;
-
-    Mesh backup = mesh; // 备份原始网格
-
-    bool success = false;
-
-    while (epsilon <= max_epsilon)
-    {
-        mesh = backup; // 每次尝试新的 epsilon 前还原
-        qDebug() << "[Remesh] Trying epsilon =" << epsilon;
-
-        if (vertexClustering(epsilon))
-        {
-            int new_vertices = mesh.n_vertices();
-
-            if (new_vertices >= target_min_vertices)
-            {
-                success = true;
-                qDebug() << "[Remesh] Success with vertex count:" << new_vertices;
-                break;
-            }
-            else
-            {
-                qDebug() << "[Remesh] Too simplified (" << new_vertices << " vertices)";
-            }
-        }
-        else
-        {
-            qDebug() << "[Remesh] vertexClustering failed for epsilon =" << epsilon;
-        }
-
-        epsilon += step;
-    }
-
-    if (success)
-    {
-        mesh.request_face_normals();
-        mesh.request_vertex_normals();
-        mesh.update_normals();
+    
+    // Execute vertex clustering algorithm
+    qDebug() << "[Remesh] Starting vertex clustering with epsilon =" << epsilon;
+    bool success = vertexClustering(epsilon);
+    
+    if (success) {
+        // Calculate reduction statistics
+        int new_vertices = mesh.n_vertices();
+        int new_faces = mesh.n_faces();
+        float vertex_reduction = 100.0f * (1.0f - static_cast<float>(new_vertices) / original_vertices);
+        float face_reduction = 100.0f * (1.0f - static_cast<float>(new_faces) / original_faces);
+        
+        qDebug() << "[Remesh] Vertex clustering completed:";
+        qDebug() << "  - Original: " << original_vertices << " vertices, " << original_faces << " faces";
+        qDebug() << "  - New:      " << new_vertices << " vertices, " << new_faces << " faces";
+        qDebug() << "  - Reduction: " << vertex_reduction << "% vertices, " << face_reduction << "% faces";
+        
+        // Update visualization
+        makeCurrent();
         updateMeshBuffers();
+        doneCurrent();
         update();
-
-        int final_vertices = mesh.n_vertices();
-        int final_faces = mesh.n_faces();
-        float vertex_reduction = 100.0f * (1.0f - static_cast<float>(final_vertices) / original_vertices);
-
-        qDebug() << "[Remesh] Final vertex count:" << final_vertices
-            << "(" << 100 - vertex_reduction << "% retained)";
-    }
-    else
-    {
-        QMessageBox::warning(this, "Remesh", "Failed to simplify while retaining 90% vertices");
-        mesh = backup;
-        updateMeshBuffers();
-        update();
+    } else {
+        qDebug() << "[Remesh] Vertex clustering failed";
     }
 }
-
 
 bool MeshViewerWidget::vertexClustering(float epsilon)
 {
@@ -664,7 +634,7 @@ bool MeshViewerWidget::vertexClustering(float epsilon)
         if (A.determinant() != 0) {
             // 使用更稳定的分解方法
             Eigen::LDLT<Eigen::Matrix3f> ldlt(A);
-            if (ldlt.isPositiveDefinite()) {
+            if (ldlt.isPositive()) {
                 optimal_pos = ldlt.solve(b);
                 matrix_ok = ldlt.info() == Eigen::Success;
             }
