@@ -117,7 +117,7 @@ Eigen::Matrix4d MeshDecimation::computeFaceQuadric(Mesh &mesh, Mesh::FaceHandle 
     auto fv_it = mesh.fv_iter(face);
     Mesh::Point point = mesh.point(*fv_it);
 
-    // 标准化法向量
+    // 标准化法向量（把它变成长度为1的向量）
     double length = normal.norm();
     if (length < 1e-10)
     {
