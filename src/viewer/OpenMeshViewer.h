@@ -32,12 +32,16 @@ class MeshViewerWidget : public QOpenGLWidget, protected QOpenGLFunctions
 public:
     MeshViewerWidget(QWidget *parent = nullptr);
     ~MeshViewerWidget();
-
     bool loadMesh(const QString &filename);
     void resetView();
     void toggleRenderMode();
     void meshDecimation();
     RenderMode renderMode = Solid;
+
+    // Public access to mesh data for decimation
+    Mesh mesh;
+    bool meshLoaded;
+    MeshDecimation meshDecimator;
 
 protected:
     void initializeGL() override;
@@ -50,9 +54,6 @@ protected:
 
 private:
     void updateMeshBuffers();
-    Mesh mesh;
-    bool meshLoaded;
-    MeshDecimation meshDecimator;
 
     QOpenGLShaderProgram *solidProgram = nullptr;
     QOpenGLShaderProgram *wireframeProgram = nullptr;

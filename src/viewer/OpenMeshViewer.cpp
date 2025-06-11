@@ -459,10 +459,82 @@ void MainWindow::toggleRenderMode()
 }
 void MainWindow::meshDecimation()
 {
-    if (meshViewer)
+    if (!meshViewer || !meshViewer->meshLoaded)
     {
+        QMessageBox::warning(this, "警告", "请先加载一个网格模型！");
+        return;
+    }
+
+    // Create a dialog for setting decimation parameters
+    QDialog dialog(this);
+    dialog.setWindowTitle("网格简化参数设置");
+    dialog.resize(400, 200);
+
+    QFormLayout *layout = new QFormLayout(&dialog);
+
+    // Current mesh info
+    int currentVertexCount = meshViewer->mesh.n_vertices();
+    int currentFaceCount = meshViewer->mesh.n_faces();
+
+    QLabel *infoLabel = new QLabel(QString("当前网格：%1 个顶点，%2 个面片")
+                                       .arg(currentVertexCount)
+                                       .arg(currentFaceCount));
+    layout->addRow(infoLabel);
+
+    // Target vertex count input
+    QLineEdit *targetVertexEdit = new QLineEdit();
+    targetVertexEdit->setText(QString::number(currentVertexCount / 2)); // Default to half
+    targetVertexEdit->setValidator(new QIntValidator(10, currentVertexCount - 1, this));
+    layout->addRow("目标顶点数：", targetVertexEdit);
+
+    // Max error input
+    QLineEdit *maxErrorEdit = new QLineEdit();
+    maxErrorEdit->setText("0.001");
+    maxErrorEdit->setValidator(new QDoubleValidator(0.0, 1.0, 6, this));
+    layout->addRow("最大误差阈值：", maxErrorEdit);
+
+    // Buttons
+    QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addRow(buttonBox);
+
+    if (dialog.exec() == QDialog::Accepted)
+    {
+        // Get the parameters
+        int targetVertexCount = targetVertexEdit->text().toInt();
+        double maxError = maxErrorEdit->text().toDouble();
+
+        // Validate parameters
+        if (targetVertexCount >= currentVertexCount)
+        {
+            QMessageBox::warning(this, "参数错误", "目标顶点数必须小于当前顶点数！");
+            return;
+        }
+
+        // Set parameters and perform decimation
+        statusBar()->showMessage("正在执行网格简化...");
+
+        // Configure the decimator
+        meshViewer->meshDecimator.setTargetVertexCount(targetVertexCount);
+        meshViewer->meshDecimator.setMaxError(maxError);
+
+        // Perform decimation
         meshViewer->meshDecimation();
-        statusBar()->showMessage("meshDecimationing completed", 2000);
+
+        // Show results
+        int finalVertexCount = meshViewer->mesh.n_vertices();
+        int finalFaceCount = meshViewer->mesh.n_faces();
+
+        QString resultMessage = QString("简化完成！\n原始：%1 顶点，%2 面片\n简化后：%3 顶点，%4 面片\n简化率：%.1f%%")
+                                    .arg(currentVertexCount)
+                                    .arg(currentFaceCount)
+                                    .arg(finalVertexCount)
+                                    .arg(finalFaceCount)
+                                    .arg(100.0 * (currentVertexCount - finalVertexCount) / currentVertexCount);
+
+        QMessageBox::information(this, "简化完成", resultMessage);
+        statusBar()->showMessage("网格简化完成", 3000);
     }
 }
 void MeshViewerWidget::meshDecimation()

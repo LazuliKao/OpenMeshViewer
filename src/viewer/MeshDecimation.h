@@ -31,11 +31,14 @@ public:
     ~MeshDecimation();
 
     // 对给定网格执行简化操作
-    void performDecimation(Mesh &mesh);
-
-    // 设置简化参数
+    void performDecimation(Mesh &mesh);         // 设置简化参数
     void setTargetVertexCount(int targetCount); // 设置目标顶点数量
     void setMaxError(double maxError);          // 设置最大允许误差
+
+    // 获取当前参数
+    int getTargetVertexCount() const { return targetVertexCount_; }
+    double getMaxError() const { return maxAllowedError_; }
+    bool isInitialized() const { return isInitialized_; }
 
 private:
     // QEM算法主要步骤函数
