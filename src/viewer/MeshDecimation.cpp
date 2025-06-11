@@ -24,35 +24,32 @@ void MeshDecimation::performDecimation(Mesh &mesh)
 {
     if (!mesh.n_vertices())
     {
-        std::cout << "Empty mesh, nothing to decimate" << std::endl;
+        std::cout << "空网格，无需简化" << std::endl;
         return;
     }
+    std::cout << "开始QEM简化..." << std::endl;
+    std::cout << "初始顶点数: " << mesh.n_vertices() << std::endl;
+    std::cout << "目标顶点数: " << targetVertexCount_ << std::endl;
 
-    std::cout << "Starting QEM decimation..." << std::endl;
-    std::cout << "Initial vertices: " << mesh.n_vertices() << std::endl;
-    std::cout << "Target vertices: " << targetVertexCount_ << std::endl;
-
-    // Request necessary properties
+    // 请求必要的属性
     mesh.request_vertex_status();
     mesh.request_edge_status();
     mesh.request_face_status();
     mesh.request_face_normals();
     mesh.update_normals();
 
-    // Initialize quadrics for all vertices
+    // 为所有顶点初始化二次误差矩阵
     initializeQuadrics(mesh);
 
-    // Compute initial edge costs
+    // 计算初始边的代价
     computeEdgeCosts(mesh);
 
-    // Main decimation loop
+    // 主简化循环
     int collapseCount = 0;
     while (mesh.n_vertices() > targetVertexCount_ && !edgeQueue_.empty())
     {
         EdgeCollapse bestCollapse = edgeQueue_.top();
-        edgeQueue_.pop();
-
-        // Check if this edge is still valid
+        edgeQueue_.pop();        // 检查此边是否仍然有效
         if (!mesh.is_valid_handle(bestCollapse.edge) ||
             mesh.status(bestCollapse.edge).deleted() ||
             validEdges_.find(bestCollapse.edge) == validEdges_.end())
@@ -60,51 +57,50 @@ void MeshDecimation::performDecimation(Mesh &mesh)
             continue;
         }
 
-        // Check if cost exceeds threshold
+        // 检查代价是否超过阈值
         if (bestCollapse.cost > maxError_)
         {
-            std::cout << "Reached error threshold: " << bestCollapse.cost << std::endl;
+            std::cout << "达到误差阈值: " << bestCollapse.cost << std::endl;
             break;
         }
 
-        // Perform edge collapse
+        // 执行边折叠
         if (collapseEdge(mesh, bestCollapse))
         {
             collapseCount++;
             if (collapseCount % 100 == 0)
             {
-                std::cout << "Collapsed " << collapseCount << " edges, vertices: " << mesh.n_vertices() << std::endl;
+                std::cout << "已折叠 " << collapseCount << " 条边，当前顶点数: " << mesh.n_vertices() << std::endl;
             }
         }
     }
 
-    // Clean up deleted elements
+    // 清理已删除的元素
     mesh.garbage_collection();
 
-    std::cout << "Decimation complete!" << std::endl;
-    std::cout << "Final vertices: " << mesh.n_vertices() << std::endl;
-    std::cout << "Collapsed edges: " << collapseCount << std::endl;
+    std::cout << "简化完成！" << std::endl;
+    std::cout << "最终顶点数: " << mesh.n_vertices() << std::endl;
+    std::cout << "折叠边数: " << collapseCount << std::endl;
 }
 
 void MeshDecimation::initializeQuadrics(Mesh &mesh)
 {
     vertexQuadrics_.clear();
 
-    // Initialize all vertex quadrics to zero
+    // 将所有顶点的二次误差矩阵初始化为零
     for (auto v_it = mesh.vertices_begin(); v_it != mesh.vertices_end(); ++v_it)
     {
         vertexQuadrics_[*v_it] = Eigen::Matrix4d::Zero();
     }
 
-    // Accumulate quadrics from adjacent faces
+    // 从相邻面累积二次误差矩阵
     for (auto f_it = mesh.faces_begin(); f_it != mesh.faces_end(); ++f_it)
     {
         if (mesh.status(*f_it).deleted())
             continue;
-
         Eigen::Matrix4d faceQuadric = computeFaceQuadric(mesh, *f_it);
 
-        // Add face quadric to all vertices of the face
+        // 将面的二次误差矩阵添加到面的所有顶点
         for (auto fv_it = mesh.fv_iter(*f_it); fv_it.is_valid(); ++fv_it)
         {
             vertexQuadrics_[*fv_it] += faceQuadric;
@@ -114,14 +110,14 @@ void MeshDecimation::initializeQuadrics(Mesh &mesh)
 
 Eigen::Matrix4d MeshDecimation::computeFaceQuadric(Mesh &mesh, Mesh::FaceHandle face)
 {
-    // Get face normal and a point on the plane
+    // 获取面法向量和平面上的一个点
     Mesh::Normal normal = mesh.normal(face);
 
-    // Get first vertex of face to compute plane equation
+    // 获取面的第一个顶点来计算平面方程
     auto fv_it = mesh.fv_iter(face);
     Mesh::Point point = mesh.point(*fv_it);
 
-    // Normalize normal vector
+    // 标准化法向量
     double length = normal.norm();
     if (length < 1e-10)
     {
@@ -129,13 +125,13 @@ Eigen::Matrix4d MeshDecimation::computeFaceQuadric(Mesh &mesh, Mesh::FaceHandle 
     }
     normal /= length;
 
-    // Compute plane equation: ax + by + cz + d = 0
+    // 计算平面方程: ax + by + cz + d = 0
     double a = normal[0];
     double b = normal[1];
     double c = normal[2];
     double d = -(a * point[0] + b * point[1] + c * point[2]);
 
-    // Create quadric matrix
+    // 创建二次误差矩阵
     Eigen::Matrix4d quadric;
     quadric << a * a, a * b, a * c, a * d,
         a * b, b * b, b * c, b * d,
@@ -147,12 +143,12 @@ Eigen::Matrix4d MeshDecimation::computeFaceQuadric(Mesh &mesh, Mesh::FaceHandle 
 
 void MeshDecimation::computeEdgeCosts(Mesh &mesh)
 {
-    // Clear previous data
+    // 清除之前的数据
     while (!edgeQueue_.empty())
         edgeQueue_.pop();
     validEdges_.clear();
 
-    // Compute cost for each edge
+    // 计算每条边的代价
     for (auto e_it = mesh.edges_begin(); e_it != mesh.edges_end(); ++e_it)
     {
         if (mesh.status(*e_it).deleted())
@@ -180,13 +176,13 @@ double MeshDecimation::computeEdgeCost(Mesh &mesh, Mesh::EdgeHandle edge, Eigen:
     auto v1 = mesh.from_vertex_handle(heh);
     auto v2 = mesh.to_vertex_handle(heh);
 
-    // Check if collapse is valid
+    // 检查折叠是否有效
     if (!isValidCollapse(mesh, edge))
     {
         return std::numeric_limits<double>::infinity();
     }
 
-    // Get quadrics for both vertices
+    // 获取两个顶点的二次误差矩阵
     auto it1 = vertexQuadrics_.find(v1);
     auto it2 = vertexQuadrics_.find(v2);
 
@@ -195,23 +191,22 @@ double MeshDecimation::computeEdgeCost(Mesh &mesh, Mesh::EdgeHandle edge, Eigen:
         return std::numeric_limits<double>::infinity();
     }
 
-    // Combine quadrics
+    // 合并二次误差矩阵
     Eigen::Matrix4d combinedQuadric = it1->second + it2->second;
 
-    // Try to find optimal position
+    // 尝试找到最优位置
     optimalPos = computeOptimalPosition(combinedQuadric);
 
-    // If optimal position computation failed, try midpoint
+    // 如果最优位置计算失败，尝试使用中点
     if (optimalPos.hasNaN())
     {
         auto p1 = mesh.point(v1);
         auto p2 = mesh.point(v2);
         optimalPos = Eigen::Vector3d((p1[0] + p2[0]) * 0.5,
-                                     (p1[1] + p2[1]) * 0.5,
-                                     (p1[2] + p2[2]) * 0.5);
+                                     (p1[1] + p2[1]) * 0.5, (p1[2] + p2[2]) * 0.5);
     }
 
-    // Compute error at optimal position
+    // 计算最优位置处的误差
     Eigen::Vector4d pos(optimalPos[0], optimalPos[1], optimalPos[2], 1.0);
     double error = pos.transpose() * combinedQuadric * pos;
 
@@ -220,18 +215,18 @@ double MeshDecimation::computeEdgeCost(Mesh &mesh, Mesh::EdgeHandle edge, Eigen:
 
 Eigen::Vector3d MeshDecimation::computeOptimalPosition(const Eigen::Matrix4d &quadric)
 {
-    // Extract upper 3x3 matrix
+    // 提取上3x3矩阵
     Eigen::Matrix3d A = quadric.block<3, 3>(0, 0);
     Eigen::Vector3d b = -quadric.block<3, 1>(0, 3);
 
-    // Solve Ax = b for optimal position
+    // 求解 Ax = b 得到最优位置
     Eigen::FullPivLU<Eigen::Matrix3d> lu(A);
     if (lu.isInvertible())
     {
         return lu.solve(b);
     }
 
-    // If not invertible, return NaN to indicate failure
+    // 如果不可逆，返回NaN表示失败
     return Eigen::Vector3d(std::numeric_limits<double>::quiet_NaN(),
                            std::numeric_limits<double>::quiet_NaN(),
                            std::numeric_limits<double>::quiet_NaN());

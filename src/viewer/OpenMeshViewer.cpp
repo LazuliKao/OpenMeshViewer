@@ -426,12 +426,12 @@ void MainWindow::openFile()
 
 void MainWindow::loadDefaultModel()
 {
-    QFile resourceFile(":/models/Models/Dino.ply");
+    QFile resourceFile(":/models/Models/Horse.ply");
     if (resourceFile.open(QIODevice::ReadOnly))
     {
         QByteArray data = resourceFile.readAll();
 
-        QString tempFilePath = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/Dino_temp.ply";
+        QString tempFilePath = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/Horse_temp.ply";
         QFile tempFile(tempFilePath);
         if (tempFile.open(QIODevice::WriteOnly))
         {

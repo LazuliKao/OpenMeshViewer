@@ -16,13 +16,13 @@
 #include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
 #include "MeshDecimation.h"
 
-// Define the mesh type
+// 定义网格类型
 typedef OpenMesh::TriMesh_ArrayKernelT<> Mesh;
 
 enum RenderMode
 {
-    Solid,    // Normal rendering
-    Wireframe // Wireframe rendering
+    Solid,    // 实体渲染
+    Wireframe // 线框渲染
 };
 
 class MeshViewerWidget : public QOpenGLWidget, protected QOpenGLFunctions
@@ -36,9 +36,7 @@ public:
     void resetView();
     void toggleRenderMode();
     void meshDecimation();
-    RenderMode renderMode = Solid;
-
-    // Public access to mesh data for decimation
+    RenderMode renderMode = Solid;    // 网格简化的公共访问接口
     Mesh mesh;
     bool meshLoaded;
     MeshDecimation meshDecimator;

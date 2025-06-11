@@ -8,10 +8,10 @@
 #include <map>
 #include <set>
 
-// Forward declaration of Mesh type
+// 网格类型前向声明
 typedef OpenMesh::TriMesh_ArrayKernelT<> Mesh;
 
-// Edge collapse structure for priority queue
+// 用于优先队列的边折叠结构
 struct EdgeCollapse
 {
     Mesh::EdgeHandle edge;
@@ -20,39 +20,39 @@ struct EdgeCollapse
 
     bool operator>(const EdgeCollapse &other) const
     {
-        return cost > other.cost; // For min-heap
+        return cost > other.cost; // 用于最小堆
     }
 };
 
 class MeshDecimation
 {
 public:
-    // Constructor
+    // 构造函数
     MeshDecimation();
 
-    // Set decimation parameters
+    // 设置简化参数
     void setTargetVertexCount(int count);
     void setMaxError(double error);
 
-    // Main decimation function
+    // 主要简化函数
     void performDecimation(Mesh &mesh);
 
 private:
-    // QEM algorithm components
+    // QEM算法组件
     void initializeQuadrics(Mesh &mesh);
     void computeEdgeCosts(Mesh &mesh);
     bool collapseEdge(Mesh &mesh, const EdgeCollapse &collapse);
-    void updateEdgeCosts(Mesh &mesh, Mesh::VertexHandle vertex);    // Utility functions
+    void updateEdgeCosts(Mesh &mesh, Mesh::VertexHandle vertex); // 实用函数
     Eigen::Matrix4d computeFaceQuadric(Mesh &mesh, Mesh::FaceHandle face);
     double computeEdgeCost(Mesh &mesh, Mesh::EdgeHandle edge, Eigen::Vector3d &optimalPos);
     Eigen::Vector3d computeOptimalPosition(const Eigen::Matrix4d &quadric);
     bool isValidCollapse(Mesh &mesh, Mesh::EdgeHandle edge);
 
-    // Member variables
+    // 成员变量
     int targetVertexCount_;
     double maxError_;
 
-    // QEM data structures
+    // QEM数据结构
     std::map<Mesh::VertexHandle, Eigen::Matrix4d> vertexQuadrics_;
     std::priority_queue<EdgeCollapse, std::vector<EdgeCollapse>, std::greater<EdgeCollapse>> edgeQueue_;
     std::set<Mesh::EdgeHandle> validEdges_;
