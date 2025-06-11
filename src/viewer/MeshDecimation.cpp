@@ -129,6 +129,7 @@ Eigen::Matrix4d MeshDecimation::computeFaceQuadric(Mesh &mesh, Mesh::FaceHandle 
     double a = normal[0];
     double b = normal[1];
     double c = normal[2];
+	//代入平面中的一个点来计算d
     double d = -(a * point[0] + b * point[1] + c * point[2]);
 
     // 创建二次误差矩阵
