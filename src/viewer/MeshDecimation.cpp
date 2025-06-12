@@ -31,7 +31,6 @@ void MeshDecimation::performDecimation(Mesh &mesh)
     std::cout << "初始顶点数: " << mesh.n_vertices() << std::endl;
     std::cout << "目标顶点数: " << targetVertexCount_ << std::endl;
 
-    // 请求必要的属性
     mesh.request_vertex_status();
     mesh.request_edge_status();
     mesh.request_face_status();
@@ -50,7 +49,7 @@ void MeshDecimation::performDecimation(Mesh &mesh)
     {
         EdgeCollapse bestCollapse = edgeQueue_.top();
         edgeQueue_.pop();
-        // 检查此边是否仍然有效
+        // 此边是否仍然有效
         if (!mesh.is_valid_handle(bestCollapse.edge) ||
             mesh.status(bestCollapse.edge).deleted() ||
             validEdges_.find(bestCollapse.edge) == validEdges_.end())
@@ -58,14 +57,14 @@ void MeshDecimation::performDecimation(Mesh &mesh)
             continue;
         }
 
-        // 检查代价是否超过阈值
+        // 代价是否超过阈值
         if (bestCollapse.cost > maxError_)
         {
             std::cout << "达到误差阈值: " << bestCollapse.cost << std::endl;
             break;
         }
 
-        // 执行边折叠
+        // 边折叠
         if (collapseEdge(mesh, bestCollapse))
         {
             collapseCount++;
@@ -272,7 +271,6 @@ bool MeshDecimation::isValidCollapse(Mesh &mesh, Mesh::EdgeHandle edge)
         }
     }
 
-    // 此处可添加更多拓扑合法性检查
     return true;
 }
 
@@ -317,19 +315,16 @@ bool MeshDecimation::collapseEdge(Mesh &mesh, const EdgeCollapse &collapse)
         validEdges_.erase(*ve_it);
     }
 
-    // 执行实际的边折叠操作
     if (!mesh.is_collapse_ok(heh))
     {
         return false;
     }
 
-    // OpenMesh 的 collapse() 函数会自动：
-    // 将所有指向 v2 的边重新连接到 v1(新的)
-    // 删除不再需要的边和面
-    // 维护网格的拓扑一致性
     mesh.collapse(heh);
+    // OpenMesh 的 collapse() 函数会自动：   1. 将所有指向 v2 的边重新连接到 v1(新的)
+    //                                                              2. 删除不再需要的边和面
+    //                                                              3. 维护网格的拓扑一致性
 
-    // 更新保留顶点周围边的折叠代价
     updateEdgeCosts(mesh, v1);
 
     return true;

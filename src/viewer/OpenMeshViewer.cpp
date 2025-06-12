@@ -21,7 +21,6 @@
 #include <QFormLayout>
 #include <QDialog>
 
-// Hash function for OpenMesh::Vec3f to be used in unordered_map
 namespace std
 {
     template <>
@@ -34,13 +33,6 @@ namespace std
     };
 }
 
-/**
- * @brief MeshViewerWidget构造函数
- * @param parent 父窗口指针
- *
- * 初始化OpenGL网格查看器控件，设置默认的视图参数，
- * 包括旋转角度、缩放因子、平移量等初始值
- */
 MeshViewerWidget::MeshViewerWidget(QWidget *parent)
     : QOpenGLWidget(parent),
       meshLoaded(false),
@@ -58,12 +50,6 @@ MeshViewerWidget::MeshViewerWidget(QWidget *parent)
     setFocusPolicy(Qt::StrongFocus);
 }
 
-/**
- * @brief MeshViewerWidget析构函数
- *
- * 清理OpenGL资源，包括删除着色器程序、销毁VAO和缓冲区对象，
- * 确保在对象销毁时正确释放所有OpenGL相关资源
- */
 MeshViewerWidget::~MeshViewerWidget()
 {
     makeCurrent();
@@ -85,15 +71,6 @@ MeshViewerWidget::~MeshViewerWidget()
     doneCurrent();
 }
 
-/**
- * @brief 加载网格模型文件
- * @param filename 网格文件路径
- * @return 成功返回true，失败返回false
- *
- * 使用OpenMesh库读取网格文件，支持多种格式（obj, off, stl, ply等），
- * 加载成功后更新顶点和面片法线，刷新OpenGL缓冲区，
- * 并自动调整视图以适应模型大小
- */
 bool MeshViewerWidget::loadMesh(const QString &filename)
 {
     if (!OpenMesh::IO::read_mesh(mesh, filename.toStdString()))
@@ -122,12 +99,7 @@ bool MeshViewerWidget::loadMesh(const QString &filename)
     return true;
 }
 
-/**
- * @brief 重置视图参数
- *
- * 将所有视图变换参数重置为默认值，包括旋转角度、缩放、平移等，
- * 重置模型矩阵和视图矩阵到初始状态，并刷新显示
- */
+// 重置模型矩阵和视图矩阵到初始状态，并刷新显示
 void MeshViewerWidget::resetView()
 {
     rotationX = 0.0f;
@@ -143,14 +115,7 @@ void MeshViewerWidget::resetView()
     update();
 }
 
-/**
- * @brief 计算网格模型的边界盒
- * @param minPoint 返回边界盒的最小点坐标
- * @param maxPoint 返回边界盒的最大点坐标
- *
- * 遍历网格的所有顶点，计算包围整个模型的最小边界盒，
- * 用于自动视图调整和模型居中显示
- */
+// 遍历网格的所有顶点，计算包围整个模型的最小边界盒， 用于自动视图调整和模型居中显示
 void MeshViewerWidget::computeBoundingBox(Mesh::Point &minPoint, Mesh::Point &maxPoint)
 {
     if (!meshLoaded || mesh.n_vertices() == 0)
@@ -176,13 +141,6 @@ void MeshViewerWidget::computeBoundingBox(Mesh::Point &minPoint, Mesh::Point &ma
     }
 }
 
-/**
- * @brief 自动调整视图以适应模型大小
- *
- * 根据模型的边界盒自动计算合适的缩放比例和视图位置，
- * 使模型在视口中完整显示且占据合适的比例，
- * 同时将模型居中显示
- */
 void MeshViewerWidget::autoFitView()
 {
     if (!meshLoaded)
@@ -216,13 +174,7 @@ void MeshViewerWidget::autoFitView()
     update();
 }
 
-/**
- * @brief 初始化OpenGL上下文
- *
- * OpenGL初始化函数，设置OpenGL状态（深度测试、背景色等），
- * 创建和编译着色器程序（实体渲染和线框渲染），
- * 初始化VAO和缓冲区对象，为网格渲染做准备
- */
+// OpenGL初始化函数，设置OpenGL状态（深度测试、背景色等）
 void MeshViewerWidget::initializeGL()
 {
     initializeOpenGLFunctions();
@@ -262,13 +214,9 @@ void MeshViewerWidget::initializeGL()
     }
 }
 
-/**
- * @brief 更新网格缓冲区数据
- *
- * 将网格的顶点数据（位置和法线）和索引数据上传到OpenGL缓冲区，
- * 根据渲染模式（实体或线框）生成不同的索引数据，
- * 配置顶点属性指针以供着色器使用
- */
+// 将网格的顶点数据（位置和法线）和索引数据上传到OpenGL缓冲区，
+// 根据渲染模式（实体或线框）生成不同的索引数据，
+// 配置顶点属性指针以供着色器使用
 void MeshViewerWidget::updateMeshBuffers()
 {
     if (!meshLoaded)
@@ -347,13 +295,9 @@ void MeshViewerWidget::updateMeshBuffers()
     vao.release();
 }
 
-/**
- * @brief OpenGL绘制函数
- *
- * 主要的渲染函数，清除颜色和深度缓冲区，
- * 设置模型-视图-投影矩阵，根据当前渲染模式绘制网格，
- * 支持实体渲染（三角形）和线框渲染（线段）两种模式
- */
+// 主要的渲染函数，清除颜色和深度缓冲区，
+// 设置模型-视图-投影矩阵，根据当前渲染模式绘制网格，
+// 支持实体渲染（三角形）和线框渲染（线段）两种模式
 void MeshViewerWidget::paintGL()
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -395,14 +339,8 @@ void MeshViewerWidget::paintGL()
     activeProgram->release();
 }
 
-/**
- * @brief 窗口大小改变时的回调函数
- * @param width 新的窗口宽度
- * @param height 新的窗口高度
- *
- * 当OpenGL窗口大小改变时更新投影矩阵，
- * 保持正确的宽高比和视角参数
- */
+// 当OpenGL窗口大小改变时更新投影矩阵，
+// 保持正确的宽高比和视角参数
 void MeshViewerWidget::resizeGL(int width, int height)
 {
     // Update projection matrix
@@ -410,13 +348,9 @@ void MeshViewerWidget::resizeGL(int width, int height)
     projectionMatrix.perspective(45.0f, width / float(height), 0.1f, 100.0f);
 }
 
-/**
- * @brief 切换渲染模式
- *
- * 在实体渲染和线框渲染模式之间切换，
- * 切换后重新更新网格缓冲区以适应新的渲染模式，
- * 并刷新显示
- */
+// 在实体渲染和线框渲染模式之间切换，
+// 切换后重新更新网格缓冲区以适应新的渲染模式，
+// 并刷新显示
 void MeshViewerWidget::toggleRenderMode()
 {
     if (renderMode == Solid)
@@ -434,26 +368,16 @@ void MeshViewerWidget::toggleRenderMode()
     update();
 }
 
-/**
- * @brief 鼠标按下事件处理
- * @param event 鼠标事件对象
- *
- * 记录鼠标按下时的位置，为后续的鼠标拖拽操作做准备
- */
+// 记录鼠标按下时的位置，为后续的鼠标拖拽操作做准备
 void MeshViewerWidget::mousePressEvent(QMouseEvent *event)
 {
     lastMousePosition = event->pos();
 }
 
-/**
- * @brief 鼠标移动事件处理
- * @param event 鼠标事件对象
- *
- * 根据鼠标按键状态执行不同操作：
- * - 左键拖拽：旋转模型（绕X轴和Y轴）
- * - 右键拖拽：平移模型（在XY平面内）
- * - 中键拖拽：Z轴方向平移（前后移动）
- */
+// 根据鼠标按键状态执行不同操作：
+// - 左键拖拽：旋转模型（绕X轴和Y轴）
+// - 右键拖拽：平移模型（在XY平面内）
+// - 中键拖拽：Z轴方向平移（前后移动）
 void MeshViewerWidget::mouseMoveEvent(QMouseEvent *event)
 {
     QPoint delta = event->pos() - lastMousePosition;
@@ -483,14 +407,6 @@ void MeshViewerWidget::mouseMoveEvent(QMouseEvent *event)
     lastMousePosition = event->pos();
 }
 
-/**
- * @brief 鼠标滚轮事件处理
- * @param event 滚轮事件对象
- *
- * 响应鼠标滚轮操作，控制视图的缩放，
- * 向前滚动缩小（拉近），向后滚动放大（拉远），
- * 限制缩放范围在合理区间内
- */
 void MeshViewerWidget::wheelEvent(QWheelEvent *event)
 {
     float zoomFactor = 1.0f - event->angleDelta().y() / 1200.0f;
@@ -510,18 +426,12 @@ void MeshViewerWidget::wheelEvent(QWheelEvent *event)
     update();
 }
 
-/**
- * @brief MainWindow构造函数
- * @param parent 父窗口指针
- *
- * 创建主窗口界面，初始化网格查看器控件，
- * 设置中央窗口布局，创建菜单栏和工具栏，
- * 配置窗口标题、大小和状态栏
- */
+// 创建主窗口界面，初始化网格查看器控件，
+// 设置中央窗口布局，创建菜单栏和工具栏，
+// 配置窗口标题、大小和状态栏
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
-    // Create central widget with mesh viewer
     QWidget *centralWidget = new QWidget();
     QVBoxLayout *layout = new QVBoxLayout(centralWidget);
 
@@ -530,26 +440,19 @@ MainWindow::MainWindow(QWidget *parent)
 
     setCentralWidget(centralWidget);
 
-    // Create menus and actions
     createActions();
-    createMenus();
 
-    // Set window properties
     setWindowTitle("OpenMesh Viewer");
     resize(800, 600);
 
-    // Set status bar message    statusBar()->showMessage("Ready");
+    statusBar()->showMessage("Ready");
 }
 
-/**
- * @brief 创建菜单栏和工具栏动作
- *
- * 创建应用程序的所有菜单项和对应的动作，包括：
- * - 文件菜单：打开文件、退出
- * - 处理菜单：网格简化
- * - 切换菜单：渲染模式切换、自动适应视图
- * 设置快捷键和连接信号槽
- */
+// 创建应用程序的所有菜单项和对应的动作，包括：
+// - 文件菜单：打开文件、退出
+// - 处理菜单：网格简化
+// - 切换菜单：渲染模式切换、自动适应视图
+// 设置快捷键和连接信号槽
 void MainWindow::createActions()
 {
     QMenu *processMenu = menuBar()->addMenu("&Process");
@@ -583,23 +486,6 @@ void MainWindow::createActions()
     ToggleMenu->addAction(autoFitAction);
 }
 
-/**
- * @brief 创建菜单栏
- *
- * 菜单栏的创建已在createActions()函数中完成，
- * 此函数保留用于可能的额外菜单配置
- */
-void MainWindow::createMenus()
-{ // Menus are already created in createActions()
-}
-
-/**
- * @brief 打开文件对话框并加载网格
- *
- * 显示文件选择对话框，支持多种网格文件格式，
- * 用户选择文件后尝试加载网格模型，
- * 显示加载进度和结果信息在状态栏
- */
 void MainWindow::openFile()
 {
     QString filename = QFileDialog::getOpenFileName(this,
@@ -621,13 +507,6 @@ void MainWindow::openFile()
     }
 }
 
-/**
- * @brief 加载默认模型
- *
- * 从应用程序资源中加载默认的恐龙模型(Dino.ply)，
- * 将资源文件复制到临时目录后加载，
- * 用于应用程序启动时的默认显示
- */
 void MainWindow::loadDefaultModel()
 {
     QFile resourceFile(":/models/Models/Dino.ply");
@@ -651,12 +530,8 @@ void MainWindow::loadDefaultModel()
     }
 }
 
-/**
- * @brief 切换渲染模式
- *
- * 在实体渲染和线框渲染模式之间切换，
- * 调用网格查看器的切换函数并在状态栏显示切换信息
- */
+// 在实体渲染和线框渲染模式之间切换，
+// 调用网格查看器的切换函数并在状态栏显示切换信息
 void MainWindow::toggleRenderMode()
 {
     // Toggle the render mode between Solid and Wireframe
@@ -667,13 +542,7 @@ void MainWindow::toggleRenderMode()
     statusBar()->showMessage("Render mode toggled", 2000);
 }
 
-/**
- * @brief 自动适应视图
- *
- * 自动调整视图以适应当前加载的网格模型，
- * 确保模型完整显示在视口中并占据合适比例，
- * 如果没有加载模型则显示提示信息
- */
+// 自动调整视图以适应当前加载的网格模型，
 void MainWindow::autoFitView()
 {
     if (meshViewer && meshViewer->meshLoaded)
@@ -687,13 +556,6 @@ void MainWindow::autoFitView()
     }
 }
 
-/**
- * @brief 网格简化功能
- *
- * 显示网格简化参数设置对话框，让用户设置目标顶点数和误差阈值，
- * 执行网格简化算法，显示简化前后的统计信息，
- * 包括顶点数、面片数和简化比例
- */
 void MainWindow::meshDecimation()
 {
     if (!meshViewer || !meshViewer->meshLoaded)
@@ -775,13 +637,9 @@ void MainWindow::meshDecimation()
     }
 }
 
-/**
- * @brief 执行网格简化
- *
- * MeshViewerWidget中的网格简化执行函数，
- * 调用网格简化器执行简化算法，
- * 简化完成后更新OpenGL缓冲区并刷新显示
- */
+// MeshViewerWidget中的网格简化执行函数，
+// 调用网格简化器执行简化算法，
+// 简化完成后更新OpenGL缓冲区并刷新显示
 void MeshViewerWidget::meshDecimation()
 {
     if (!meshLoaded)
@@ -796,16 +654,6 @@ void MeshViewerWidget::meshDecimation()
     doneCurrent();
     update();
 }
-
-/**
- * @brief 程序主入口函数
- * @param argc 命令行参数个数
- * @param argv 命令行参数数组
- * @return 程序退出代码
- *
- * 创建Qt应用程序实例，初始化主窗口，
- * 加载默认模型并显示窗口，启动事件循环
- */
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);

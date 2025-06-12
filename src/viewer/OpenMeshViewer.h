@@ -93,5 +93,4 @@ public slots:
 private:
     MeshViewerWidget *meshViewer;
     void createActions();
-    void createMenus();
 };
